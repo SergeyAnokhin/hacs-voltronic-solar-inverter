@@ -234,6 +234,59 @@ def test_concurrent_requests_are_serialized():
     assert max_in_flight == 1
 
 
+def plain_responder(table: dict[str, str], plain: dict[str, str]):
+    """Q commands need a valid CRC; H commands answer only without CRC (like the unit)."""
+
+    def responder(frame: bytes):
+        plain_cmd = frame[:-1].decode("ascii", "replace")
+        if plain_cmd in plain:
+            return [b"(" + plain[plain_cmd].encode() + b"\r"]
+        command = frame[:-3].decode("ascii", "replace")
+        if command in table and encode_frame(command) == frame:
+            return [reply(table[command])]
+        return None
+
+    return responder
+
+
+def test_query_plain_sends_without_crc():
+    gw = FakeGateway(plain_responder({}, {"HGEN": "261002 21:01 01.765 0003.1 0008.5 000000008.5 0"}))
+    generation = run(make_client(gw).read_generation())
+    assert generation.pv_energy_today == 1.765
+    assert gw.sent == [b"HGEN\r"]
+
+
+def test_query_plain_refuses_unapproved_commands():
+    gw = FakeGateway(plain_responder({}, {}))
+    for bad in ("HEEP3", "HIMSG2", "QPIGS", "PVENGUSE01", "hgen", ""):
+        with pytest.raises(InvalidCommandError):
+            run(make_client(gw).query_plain(bad))
+    assert gw.sent == []
+
+
+def test_mixed_crc_and_plain_on_one_connection():
+    gw = FakeGateway(plain_responder(FULL, {"HTEMP": "028 039 032 032 039 030 030 0"}))
+
+    async def scenario():
+        client = make_client(gw)
+        mode = await client.read_mode()
+        temps = await client.read_temperatures()
+        stage_payload = await client.query("QMOD")
+        return mode, temps, stage_payload
+
+    mode, temps, again = run(scenario())
+    assert (mode, temps.transformer, again) == ("battery", 32, "B")
+    assert len(gw.connections) == 1
+
+
+def test_read_identity_detects_h_dialect():
+    gw = FakeGateway(plain_responder(FULL, {"QPRTL": "HPVINV02", "HIMSG1": "0040.09 20260119 11"}))
+    identity = run(make_client(gw).read_identity())
+    assert identity.h_protocol == "HPVINV02"
+    assert identity.firmware_date == "2026-01-19"
+    assert b"QPRTL\r" in gw.sent  # QPRTL goes out without CRC
+
+
 def test_read_identity_with_optional_commands_missing():
     table = {k: FULL[k] for k in ("QPI", "QMN", "QID", "QVFW")}
     gw = FakeGateway(table_responder(table))
@@ -244,6 +297,8 @@ def test_read_identity_with_optional_commands_missing():
     assert identity.firmware_version == "00040.09"
     assert identity.firmware_version_2 is None
     assert identity.charging_current_options == ()
+    assert identity.h_protocol is None
+    assert identity.firmware_date is None
 
 
 def test_read_identity_full():

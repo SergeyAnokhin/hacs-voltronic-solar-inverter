@@ -1,4 +1,4 @@
-"""Frame encoding/decoding for the Voltronic PI30 ASCII protocol.
+"""Frame encoding/decoding for the Voltronic PI30 ASCII protocol (and the CRC-less H dialect).
 
 request : <ASCII command> <CRC hi> <CRC lo> 0x0D
 response: '(' <payload> <CRC hi> <CRC lo> 0x0D
@@ -54,5 +54,24 @@ def decode_frame(frame: bytes) -> str:
         raise InverterProtocolError(f"CRC mismatch in response frame: {frame!r}")
     try:
         return payload[1:].decode("ascii")
+    except UnicodeDecodeError as err:
+        raise InverterProtocolError(f"non-ASCII payload: {frame!r}") from err
+
+
+# --- Solar Plug "H" dialect: no CRC in either direction ------------------------
+
+
+def encode_plain_frame(command: str) -> bytes:
+    """Encode a CRC-less request (Solar Plug H dialect, QPRTL): ASCII + CR."""
+    return command.encode("ascii") + CR
+
+
+def decode_plain_frame(frame: bytes) -> str:
+    """Return the payload of a CRC-less response '(' <payload> CR."""
+    body = frame[:-1] if frame.endswith(CR) else frame
+    if len(body) < 2 or body[:1] != b"(":
+        raise InverterProtocolError(f"malformed response frame: {frame!r}")
+    try:
+        return body[1:].decode("ascii")
     except UnicodeDecodeError as err:
         raise InverterProtocolError(f"non-ASCII payload: {frame!r}") from err

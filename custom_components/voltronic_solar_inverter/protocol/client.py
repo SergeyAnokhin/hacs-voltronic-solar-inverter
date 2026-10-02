@@ -13,7 +13,7 @@ import contextlib
 import logging
 import time
 
-from .commands import QUERY_RE, WriteCommand
+from .commands import PLAIN_QUERIES, QUERY_RE, WriteCommand
 from .errors import (
     InvalidCommandError,
     InverterConnectionError,
@@ -22,14 +22,29 @@ from .errors import (
     InverterProtocolError,
     InverterTimeoutError,
 )
-from .framing import CR, decode_frame, encode_frame
+from .framing import CR, decode_frame, decode_plain_frame, encode_frame, encode_plain_frame
+from .h_parsers import (
+    Generation,
+    SettingsEeprom1,
+    SettingsEeprom2,
+    Temperatures,
+    parse_heep1,
+    parse_heep2,
+    parse_hgen,
+    parse_hgrid_power,
+    parse_himsg1_firmware_date,
+    parse_htemp,
+)
 from .parsers import (
     DeviceIdentity,
+    Equalization,
     GeneralStatus,
     RatedInfo,
     WarningStatus,
     parse_current_options,
     parse_firmware,
+    parse_q1_charge_stage,
+    parse_qbeqi,
     parse_qflag,
     parse_qmod,
     parse_qpigs,
@@ -83,7 +98,18 @@ class InverterClient:
         """Send a read-only Q command and return the payload text."""
         if not QUERY_RE.fullmatch(command):
             raise InvalidCommandError(f"refusing to send non-query command {command!r}")
-        payload = await self._request(command, self.retries)
+        payload = await self._request(command, encode_frame(command), decode_frame, self.retries)
+        if payload == "NAK":
+            raise InverterNakError(f"{command} answered NAK")
+        return payload
+
+    async def query_plain(self, command: str) -> str:
+        """Send an owner-approved read-only query WITHOUT CRC (Solar Plug H dialect)."""
+        if command not in PLAIN_QUERIES:
+            raise InvalidCommandError(f"refusing to send {command!r}: not an approved H query")
+        payload = await self._request(
+            command, encode_plain_frame(command), decode_plain_frame, self.retries
+        )
         if payload == "NAK":
             raise InverterNakError(f"{command} answered NAK")
         return payload
@@ -95,7 +121,7 @@ class InverterClient:
         """
         if not isinstance(command, WriteCommand):
             raise InvalidCommandError("write() accepts only WriteCommand instances")
-        payload = await self._request(command.text, 0)
+        payload = await self._request(command.text, command.frame, decode_frame, 0)
         if payload == "ACK":
             return
         if payload == "NAK":
@@ -123,8 +149,33 @@ class InverterClient:
     async def read_flags(self) -> dict[str, bool]:
         return parse_qflag(await self.query("QFLAG"))
 
+    async def read_equalization(self) -> Equalization:
+        return parse_qbeqi(await self.query("QBEQI"))
+
+    async def read_charge_stage(self) -> str | None:
+        return parse_q1_charge_stage(await self.query("Q1"))
+
+    async def read_settings_1(self) -> SettingsEeprom1:
+        return parse_heep1(await self.query_plain("HEEP1"))
+
+    async def read_settings_2(self) -> SettingsEeprom2:
+        return parse_heep2(await self.query_plain("HEEP2"))
+
+    async def read_generation(self) -> Generation:
+        return parse_hgen(await self.query_plain("HGEN"))
+
+    async def read_temperatures(self) -> Temperatures:
+        return parse_htemp(await self.query_plain("HTEMP"))
+
+    async def read_grid_power(self) -> int:
+        return parse_hgrid_power(await self.query_plain("HGRID"))
+
     async def read_identity(self) -> DeviceIdentity:
-        """Static identification. QVFW2 and the current lists are optional."""
+        """Static identification. Everything after QVFW is optional.
+
+        The H dialect is detected with a CRC-less QPRTL; inverters without it
+        stay silent and only cost one timeout at start-up.
+        """
         protocol_id = (await self.query("QPI")).strip()
         model = (await self.query("QMN")).strip()
         serial = (await self.query("QID")).strip()
@@ -138,6 +189,13 @@ class InverterClient:
             charging = parse_current_options(await self.query("QMCHGCR"))
         with contextlib.suppress(InverterError):
             utility = parse_current_options(await self.query("QMUCHGCR"))
+        h_protocol = None
+        firmware_date = None
+        with contextlib.suppress(InverterError):
+            h_protocol = (await self.query_plain("QPRTL")).strip() or None
+        if h_protocol:
+            with contextlib.suppress(InverterError):
+                firmware_date = parse_himsg1_firmware_date(await self.query_plain("HIMSG1"))
         return DeviceIdentity(
             protocol_id=protocol_id,
             model=model,
@@ -146,17 +204,20 @@ class InverterClient:
             firmware_version_2=firmware_2,
             charging_current_options=charging,
             utility_charging_current_options=utility,
+            h_protocol=h_protocol,
+            firmware_date=firmware_date,
         )
 
     # --- internals -----------------------------------------------------------------
 
-    async def _request(self, text: str, retries: int) -> str:
-        frame = encode_frame(text)
+    async def _request(
+        self, text: str, frame: bytes, decode: Callable[[bytes], str], retries: int
+    ) -> str:
         async with self._lock:
             attempt = 0
             while True:
                 try:
-                    payload = await self._exchange(frame)
+                    payload = await self._exchange(frame, decode)
                 except (InverterTimeoutError, InverterProtocolError, InverterConnectionError) as err:
                     if attempt >= retries:
                         raise
@@ -166,7 +227,7 @@ class InverterClient:
                 self.last_responses[text] = payload
                 return payload
 
-    async def _exchange(self, frame: bytes) -> str:
+    async def _exchange(self, frame: bytes, decode: Callable[[bytes], str]) -> str:
         await self._connect()
         if not await self._drain():
             # The gateway closed the idle connection: reconnect once, transparently.
@@ -182,7 +243,7 @@ class InverterClient:
             raw = await asyncio.wait_for(self._reader.readuntil(CR), self.timeout)
         except TimeoutError as err:
             # Keep the connection; a late answer is discarded by _drain() next time.
-            raise InverterTimeoutError(f"no answer to {frame[:-3]!r} in {self.timeout} s") from err
+            raise InverterTimeoutError(f"no answer to {frame!r} in {self.timeout} s") from err
         except asyncio.IncompleteReadError as err:
             await self._close()
             raise InverterConnectionError("connection closed by gateway") from err
@@ -194,7 +255,7 @@ class InverterClient:
             raise InverterConnectionError(f"connection error: {err}") from err
         finally:
             self._last_exchange = time.monotonic()
-        return decode_frame(raw)
+        return decode(raw)
 
     async def _connect(self) -> None:
         if self._writer is not None:

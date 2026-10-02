@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -18,18 +19,23 @@ from homeassistant.const import (
     UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
+from homeassistant.util import dt as dt_util
 
 from .coordinator import FastData, SlowData, VoltronicConfigEntry
-from .entity import VoltronicEntity
+from .entity import VoltronicEntity, is_supported
+from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
 from .protocol.parsers import (
     BATTERY_TYPES,
+    CHARGE_STAGES,
     CHARGER_SOURCE_PRIORITIES,
     DEVICE_MODES,
     INPUT_VOLTAGE_RANGES,
@@ -46,12 +52,14 @@ PARALLEL_UPDATES = 0
 @dataclass(frozen=True, kw_only=True)
 class VoltronicFastSensorDescription(SensorEntityDescription):
     value_fn: Callable[[FastData], StateType]
+    requires: str | None = None  # FastData field that must have been read
 
 
 @dataclass(frozen=True, kw_only=True)
 class VoltronicSlowSensorDescription(SensorEntityDescription):
-    value_fn: Callable[[SlowData], StateType]
+    value_fn: Callable[[SlowData], StateType | datetime]
     code_fn: Callable[[SlowData], Any] | None = None  # raw code shown as attribute for enums
+    requires: str | None = None  # SlowData field that must have been read
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -180,6 +188,10 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         )
     ),
     VoltronicFastSensorDescription(
+        # HGRID[6]; sign convention not verified yet
+        **_power("grid_power", lambda d: d.grid_power, requires="grid_power")
+    ),
+    VoltronicFastSensorDescription(
         key="device_mode",
         translation_key="device_mode",
         device_class=SensorDeviceClass.ENUM,
@@ -194,6 +206,7 @@ def _setting_enum(
     mapping: Mapping[Any, str],
     code_fn: Callable[[SlowData], Any],
     enabled: bool = True,
+    requires: str | None = None,
 ) -> VoltronicSlowSensorDescription:
     return VoltronicSlowSensorDescription(
         key=key,
@@ -204,6 +217,7 @@ def _setting_enum(
         entity_registry_enabled_default=enabled,
         value_fn=lambda d: mapping.get(code_fn(d)),
         code_fn=code_fn,
+        requires=requires,
     )
 
 
@@ -280,6 +294,191 @@ SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
     _setting_enum("output_mode", OUTPUT_MODES, lambda d: d.rated.output_mode, enabled=False),
 )
 
+def _hour(schedule_fn: Callable[[SlowData], Schedule], start: bool) -> Callable[[SlowData], str]:
+    def value(d: SlowData) -> str:
+        schedule = schedule_fn(d)
+        return f"{schedule.start_hour if start else schedule.end_hour:02d}:00"
+
+    return value
+
+
+def _pv_energy(key: str, value_fn) -> VoltronicSlowSensorDescription:
+    return VoltronicSlowSensorDescription(
+        key=key,
+        translation_key=key,
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=value_fn,
+        requires="generation",
+    )
+
+
+def _temperature(key: str, value_fn) -> VoltronicSlowSensorDescription:
+    return VoltronicSlowSensorDescription(
+        key=key,
+        translation_key=key,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=value_fn,
+        requires="temperatures",
+    )
+
+
+def _diag_voltage(
+    key: str, value_fn, requires: str, enabled: bool = True
+) -> VoltronicSlowSensorDescription:
+    return VoltronicSlowSensorDescription(
+        key=key,
+        translation_key=key,
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=enabled,
+        value_fn=value_fn,
+        requires=requires,
+    )
+
+
+def _extra(key: str, value_fn, requires: str, enabled: bool = True, **kwargs):
+    return VoltronicSlowSensorDescription(
+        key=key,
+        translation_key=key,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=enabled,
+        value_fn=value_fn,
+        requires=requires,
+        **kwargs,
+    )
+
+
+_MINUTES = {"device_class": SensorDeviceClass.DURATION, "native_unit_of_measurement": UnitOfTime.MINUTES}
+_PERCENT = {"native_unit_of_measurement": PERCENTAGE}
+
+# Optional sources: QBEQI, Q1 and the H dialect (HGEN, HEEP1, HEEP2, HTEMP).
+EXTRA_SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
+    # PV energy counters (HGEN); same values as the vendor app
+    _pv_energy("pv_energy_today", lambda d: d.generation.pv_energy_today),
+    _pv_energy("pv_energy_month", lambda d: d.generation.pv_energy_month),
+    _pv_energy("pv_energy_year", lambda d: d.generation.pv_energy_year),
+    _pv_energy("pv_energy_total", lambda d: d.generation.pv_energy_total),
+    # Inverter clock (HGEN); the schedules follow this clock
+    _extra(
+        "inverter_clock",
+        lambda d: d.generation.clock.replace(tzinfo=dt_util.get_default_time_zone()),
+        "generation",
+        device_class=SensorDeviceClass.TIMESTAMP,
+    ),
+    _extra(
+        "inverter_clock_offset",
+        lambda d: d.clock_offset,
+        "generation",
+        state_class=SensorStateClass.MEASUREMENT,
+        **_MINUTES,
+    ),
+    # Schedules (HEEP2): P48/P49 AC output, P46/P47 AC charger
+    VoltronicSlowSensorDescription(
+        key="ac_output_on_time",
+        translation_key="ac_output_on_time",
+        value_fn=_hour(lambda d: d.heep2.ac_output_schedule, True),
+        requires="heep2",
+    ),
+    VoltronicSlowSensorDescription(
+        key="ac_output_off_time",
+        translation_key="ac_output_off_time",
+        value_fn=_hour(lambda d: d.heep2.ac_output_schedule, False),
+        requires="heep2",
+    ),
+    VoltronicSlowSensorDescription(
+        key="ac_charger_start_time",
+        translation_key="ac_charger_start_time",
+        value_fn=_hour(lambda d: d.heep2.ac_charger_schedule, True),
+        requires="heep2",
+    ),
+    VoltronicSlowSensorDescription(
+        key="ac_charger_stop_time",
+        translation_key="ac_charger_stop_time",
+        value_fn=_hour(lambda d: d.heep2.ac_charger_schedule, False),
+        requires="heep2",
+    ),
+    # P43 solar supply priority (HEEP1)
+    _setting_enum(
+        "solar_supply_priority",
+        SOLAR_SUPPLY_PRIORITIES,
+        lambda d: d.heep1.solar_supply_priority,
+        requires="heep1",
+    ),
+    # Charge stage (Q1[17]): idle/bulk verified, absorb/float generic
+    VoltronicSlowSensorDescription(
+        key="charge_stage",
+        translation_key="charge_stage",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(CHARGE_STAGES.values()),
+        value_fn=lambda d: d.charge_stage,
+        requires="has_q1",
+    ),
+    # Temperatures and fans (HTEMP); boost temperature = the heat-sink sensor
+    _temperature("inverter_temperature", lambda d: d.temperatures.inverter),
+    _temperature("transformer_temperature", lambda d: d.temperatures.transformer),
+    _temperature("pv_temperature", lambda d: d.temperatures.pv),
+    _extra(
+        "fan_1_speed",
+        lambda d: d.temperatures.fan_1_speed,
+        "temperatures",
+        state_class=SensorStateClass.MEASUREMENT,
+        **_PERCENT,
+    ),
+    _extra(
+        "fan_2_speed",
+        lambda d: d.temperatures.fan_2_speed,
+        "temperatures",
+        state_class=SensorStateClass.MEASUREMENT,
+        **_PERCENT,
+    ),
+    # Battery low-alarm voltage (HEEP2[1], P24)
+    _diag_voltage("battery_low_alarm_voltage", lambda d: d.heep2.battery_low_alarm_voltage, "heep2"),
+    # Equalization (QBEQI), read-only
+    _diag_voltage("equalization_voltage", lambda d: d.equalization.voltage, "equalization"),
+    _extra("equalization_time", lambda d: d.equalization.time, "equalization", **_MINUTES),
+    _extra("equalization_timeout", lambda d: d.equalization.timeout, "equalization", **_MINUTES),
+    _extra(
+        "equalization_interval",
+        lambda d: d.equalization.interval,
+        "equalization",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.DAYS,
+    ),
+    # Dual (second) output (HEEP2): off by default
+    _diag_voltage(
+        "dual_output_cutoff_voltage", lambda d: d.heep2.dual_output_cutoff_voltage, "heep2", False
+    ),
+    _diag_voltage(
+        "dual_output_recover_voltage", lambda d: d.heep2.dual_output_recover_voltage, "heep2", False
+    ),
+    _extra(
+        "dual_output_recover_delay",
+        lambda d: d.heep2.dual_output_recover_delay,
+        "heep2",
+        False,
+        **_MINUTES,
+    ),
+    # BMS SOC thresholds (HEEP1): no BMS link on the owner's unit -> off by default
+    _extra("bms_shutdown_soc", lambda d: d.heep1.bms_shutdown_soc, "heep1", False, **_PERCENT),
+    _extra(
+        "bms_back_to_battery_soc", lambda d: d.heep1.bms_back_to_battery_soc, "heep1", False, **_PERCENT
+    ),
+    # Grid-tie (feed-in) current, P56 (HEEP1[17]); feed-in is off on the owner's unit
+    _extra(
+        "grid_tie_current",
+        lambda d: d.heep1.grid_tie_current,
+        "heep1",
+        False,
+        device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+    ),
+)
+
 IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
     VoltronicIdentitySensorDescription(
         key="serial_number",
@@ -301,6 +500,13 @@ IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
         value_fn=lambda i: i.firmware_version_2,
     ),
     VoltronicIdentitySensorDescription(
+        key="firmware_date",
+        translation_key="firmware_date",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda i: i.firmware_date,
+    ),
+    VoltronicIdentitySensorDescription(
         key="protocol_id",
         translation_key="protocol_id",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -316,9 +522,20 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     data = entry.runtime_data
-    entities: list[SensorEntity] = [VoltronicFastSensor(data.fast, d) for d in FAST_SENSORS]
-    entities += [VoltronicSlowSensor(data.slow, d) for d in SLOW_SENSORS]
-    entities += [VoltronicIdentitySensor(data.slow, d) for d in IDENTITY_SENSORS]
+    identity = data.identity
+    entities: list[SensorEntity] = [
+        VoltronicFastSensor(data.fast, d) for d in FAST_SENSORS if is_supported(d, identity)
+    ]
+    entities += [
+        VoltronicSlowSensor(data.slow, d)
+        for d in SLOW_SENSORS + EXTRA_SLOW_SENSORS
+        if is_supported(d, identity)
+    ]
+    entities += [
+        VoltronicIdentitySensor(data.slow, d)
+        for d in IDENTITY_SENSORS
+        if d.value_fn(identity) is not None
+    ]
     async_add_entities(entities)
 
 
@@ -334,7 +551,7 @@ class VoltronicSlowSensor(VoltronicEntity, SensorEntity):
     entity_description: VoltronicSlowSensorDescription
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         return self.entity_description.value_fn(self.coordinator.data)
 
     @property

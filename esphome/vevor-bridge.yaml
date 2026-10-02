@@ -1,0 +1,71 @@
+# ESPHome firmware that turns an ESP32 + MAX3232 into an RS232<->TCP bridge
+# on port 8899, a drop-in replacement for the Elfin gateway.
+#
+# The ESP32 does not parse anything: the HACS integration in this repository
+# keeps doing all reads (PI30 and the H dialect) and the optional writes.
+# In the integration's config flow, enter the ESP32's IP address and port 8899.
+#
+# Only one master may talk to the RS232 port: disconnect the Elfin gateway and
+# the Wi-Fi dongle while this ESP32 is connected. See docs/esphome.md.
+
+substitutions:
+  name: vevor-bridge
+  friendly_name: Vevor RS232 Bridge
+  uart_tx_pin: GPIO17  # ESP32 TX -> MAX3232 TXD/TX (TTL side)
+  uart_rx_pin: GPIO16  # ESP32 RX <- MAX3232 RXD/RX (TTL side)
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name} fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+uart:
+  id: uart_inverter
+  tx_pin: ${uart_tx_pin}
+  rx_pin: ${uart_rx_pin}
+  baud_rate: 2400
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+external_components:
+  - source: github://oxan/esphome-stream-server
+    components: [stream_server]
+
+stream_server:
+  uart_id: uart_inverter
+  port: 8899
+
+binary_sensor:
+  - platform: stream_server
+    connected:
+      name: Client connected
+
+sensor:
+  - platform: stream_server
+    connection_count:
+      name: Client count

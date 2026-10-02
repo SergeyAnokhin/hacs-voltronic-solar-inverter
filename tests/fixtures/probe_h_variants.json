@@ -1,0 +1,238 @@
+{
+  "host": "192.168.1.47",
+  "note": "Solar Plug H-family name variants (read-only discovery guesses, owner-approved), no CRC, one per connection, timeout 2 s, 1.5 s pause. Mode S, PV off. Use raw_hex.",
+  "stream": {
+    "HEEP0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HEEP3": {
+      "raw_hex": "283230343820323034382032303438203031353020303435303020303030203030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030300d",
+      "text": "2048 2048 2048 0150 04500 000 000000000000000000000000000000000000000000000000",
+      "crc_ok": null,
+      "seconds": 0.531,
+      "error": null
+    },
+    "HEEP4": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HBMS0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HBMS4": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HIMSG0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HIMSG2": {
+      "raw_hex": "283034303030203036353030203034303030203034303030203030303030303030303030303030303030303030303030300d",
+      "text": "04000 06500 04000 04000 000000000000000000000000",
+      "crc_ok": null,
+      "seconds": 0.391,
+      "error": null
+    },
+    "HIMSG3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HGEN1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HGEN2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HSTS1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.047,
+      "error": "timeout"
+    },
+    "HSTS2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HPV1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HPV2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HPVB1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HTEMP1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HOP1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HOP2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HGRID1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HBAT1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HBAT2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HDOP": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HDOP1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HPAR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HPAR1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HLOAD": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HLGEN": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HCON": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HUSE": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HTIME": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.078,
+      "error": "timeout"
+    },
+    "HCLK": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    },
+    "HSCH": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    },
+    "HBEQ": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.062,
+      "error": "timeout"
+    }
+  },
+  "taken_at": "2026-10-02 21:22:03"
+}

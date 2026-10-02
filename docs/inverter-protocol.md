@@ -1,6 +1,6 @@
 # Inverter Serial Protocol
 
-The inverter (`QPI` → `PI30`, model `VMII-4000`, firmware `VERFW:00040.09`) speaks the Voltronic/Axpert PI30 ASCII protocol over RS232 (2400 baud), plus a handful of commands from Voltronic's **UPS** protocol (`QMD`, `QBV`, `QWS`, `QBT`, `QGR`). We reach it through an Elfin RS232↔TCP gateway (TCP port 8899), so the "serial port" is a plain TCP socket. Two tools exist: the owner's working prototype [`python_scripts/get_inverter_info.py`](../python_scripts/get_inverter_info.py) (one JSON document, unchanged) and the diagnostic [`tools/probe_inverter.py`](../tools/probe_inverter.py) (verbose, timed, CRC-checked, saves raw responses). **Agents may send only `Q…` queries**; the probe refuses anything else in code (see [AGENTS.md](../AGENTS.md)). Facts marked **(verified)** were observed on the real unit (raw samples in [`tests/fixtures/`](../tests/fixtures/)). **(spec)** means the field comes from an official Voltronic protocol document (see [Sources](#sources)) and is consistent with our samples but has not been proven by a state change. **(generic)** is community knowledge and remains a hypothesis.
+The inverter (`QPI` → `PI30`, model `VMII-4000`, firmware `VERFW:00040.09`) speaks the Voltronic/Axpert PI30 ASCII protocol over RS232 (2400 baud), plus a handful of commands from Voltronic's **UPS** protocol (`QMD`, `QBV`, `QWS`, `QBT`, `QGR`). It **also** speaks a second, CRC-less dialect: the **Solar Plug / Solar of Things "H" protocol** (`QPRTL` → `HPVINV02`), the one used by the vendor Wi-Fi dongle. This dialect exposes the energy counters, the clock, the P48/P49 schedule and full settings snapshots (see [Solar Plug H-protocol](#solar-plug-h-protocol-no-crc)). We reach it through an Elfin RS232↔TCP gateway (TCP port 8899), so the "serial port" is a plain TCP socket. Two tools exist: the owner's working prototype [`python_scripts/get_inverter_info.py`](../python_scripts/get_inverter_info.py) (one JSON document, unchanged) and the diagnostic [`tools/probe_inverter.py`](../tools/probe_inverter.py) (verbose, timed, CRC-checked, saves raw responses). **Agents may send only `Q…` queries, plus the 14 read-only H queries the owner approved on 2026-10-02** (`HSTS HGRID HOP HBAT HPV HPVB HTEMP HGEN HIMSG1 HBMS1 HBMS2 HBMS3 HEEP1 HEEP2`). The probe refuses anything else in code (exact allow-list; `--no-crc` sends the CRC-less form). See [AGENTS.md](../AGENTS.md). Facts marked **(verified)** were observed on the real unit (raw samples in [`tests/fixtures/`](../tests/fixtures/)). **(spec)** means the field comes from an official Voltronic protocol document (see [Sources](#sources)) and is consistent with our samples but has not been proven by a state change. **(generic)** is community knowledge and remains a hypothesis.
 
 ## Framing (verified)
 
@@ -13,6 +13,7 @@ response: '(' <payload, space separated> <CRC16 hi> <CRC16 lo> 0x0D
 - **Unknown commands get NO reply at all** (not even `(NAK`); the caller just times out. Verified with nonsense commands (`QPIZZ`, `QPIAB`, …).
 - **`(NAK` means "command known, but refused / no data".** Only `QPIHF` and `QPICF` do this so far (see below).
 - The gateway accepts both connect-per-command and one persistent connection; a connect takes ~0.03–0.05 s.
+- **Two independent command parsers (verified):** PI30 commands are answered **only with** CRC (`QPIGS` without CRC is silent). The Solar Plug dialect (`QPRTL`, `H…`) is answered **only without** CRC (`QPRTL` with CRC is silent): request = `<ASCII> 0x0D`, response = `'(' <payload> 0x0D`, also with no CRC. See [`probe_nocrc.json`](../tests/fixtures/probe_nocrc.json) and [`probe_qprtl.json`](../tests/fixtures/probe_qprtl.json).
 - PI17/PI18 (InfiniSolar) frames start with `^P`/`^S` (e.g. `^P005PI`), not `Q`. They were **not sent**: the read-only rule allows only `Q…`, and this unit identifies itself as PI30 anyway.
 
 ## Command catalogue
@@ -78,7 +79,7 @@ All were sent one per connection with a 1.0–2.0 s timeout, in mode B with grid
 
 Raw results: [`probe_candidates.json`](../tests/fixtures/probe_candidates.json), [`probe_extra.json`](../tests/fixtures/probe_extra.json), [`probe_extra2.json`](../tests/fixtures/probe_extra2.json), [`probe_run1.json`](../tests/fixtures/probe_run1.json).
 
-**Consequences:** the device clock, **energy counters** (the LCD shows them, the serial port does not), the **P46–P49 schedules**, the dual-output state and BMS data are **not readable** on this firmware. HA must integrate `pv_watt`/`load_watt` over time (Riemann sum + utility meter) for energy.
+**Consequences:** through **PI30** the device clock, the energy counters, the schedules, the dual-output state and BMS data are not readable. Most of them **are** readable through the [Solar Plug H-protocol](#solar-plug-h-protocol-no-crc): the clock and PV energy counters via `HGEN`, the P48/P49 schedule via `HEEP2`, the dual-output settings via `HEEP1`/`HEEP2`. There is no BMS on this unit. Load (output) energy counters were not found in either dialect, so HA must integrate the load power for that.
 
 ## QPIGS fields (verified layout)
 
@@ -94,7 +95,7 @@ Sample (night, battery mode, grid present, 300 W load): `234.1 50.0 230.1 50.0 0
 | 8 | `battery_voltage` | V | 25.10 | |
 | 9 | `battery_charge_current` | A | 0 | Integer amps |
 | 10 | `battery_capacity_percent` | % | 82 | ⚠ **Voltage-derived estimate, not SOC.** The owner's LiFePO4 bank was ~12 % while this read 80–95 %. LiFePO4's flat voltage curve makes it meaningless; expose only as "inverter battery estimate" |
-| 11 | `heatsink_temp` | °C | 41 | Equals `Q1[9]` exactly in every sample |
+| 11 | `heatsink_temp` | °C | 41 | Equals `Q1[9]` and `HTEMP[1]` (**boost** temperature) in every sample |
 | 12 / 13 | `pv_current` / `pv_voltage` | A / V | 0.0 / 0.0 | PV disconnected; re-check with PV |
 | 14 | `scc_voltage` | V | 0.00 | Battery voltage seen by the solar charger (0 when the SCC is idle) |
 | 15 | `battery_discharge_current` | A | 15 | Integer amps. 15 A × 25.1 V ≈ 376 W DC for 317 W AC (≈ 84 % efficiency). With output on and 0 W load it read 0 A, so the inverter's **own idle draw is not visible** at 1 A resolution |
@@ -102,7 +103,7 @@ Sample (night, battery mode, grid present, 300 W load): `234.1 50.0 230.1 50.0 0
 | 17 | (not parsed) | 10 mV | `00` | Battery voltage offset for fans on (spec PI30 2015; older docs call it RSV1) |
 | 18 | (not parsed) | — | `00` | EEPROM version (spec; older docs RSV2) |
 | 19 | (not parsed) | W | `00000` | **PV charging power** (spec). Use this instead of `pv_current × pv_voltage`; re-check with PV |
-| 20 | (not parsed) | — | `010` | Device status 2: b10 charging to float, b9 switched on, b8 dustproof installed (spec). `010` = switched on. See [mode S](#state-dependence) |
+| 20 | (not parsed) | — | `010` | Device status 2: b10 charging to float, b9 switched on, b8 dustproof installed (spec). **b9 verified: `010` in modes B/L, `000` in mode S (output off by schedule)** |
 
 ## Q1 fields (partly decoded)
 
@@ -123,9 +124,9 @@ Sample (night, battery mode, grid present, 300 W load): `234.1 50.0 230.1 50.0 0
 | 2 / 3 | `00000` | Time until end of absorb / float charging (s) | generic; consistent (not charging) |
 | 4 / 5 | `65535` → `05472` | Unknown; `65535` = "invalid" placeholder. Changed between 19:40 and 19:57 together with idx 6/7 | — |
 | 6 / 7 | `00` → `01` | SCC OK flag / "allow SCC on" flag | generic; plausible |
-| 8 | 27–29 | Temperature (°C), probably SCC/PWM | generic |
-| 9 | 35–41 | **Inverter/heat-sink temperature (°C) = `QPIGS[11]`** | verified |
-| 10 / 11 | 27–32 | Temperatures (°C): community says battery / transformer. No battery sensor is fitted, so treat as internal sensors | generic |
+| 8 | 25–29 | **Inverter temperature (°C) = `HTEMP[0]`** | verified (same values) |
+| 9 | 34–41 | **Boost temperature (°C) = `HTEMP[1]` = `QPIGS[11]`** | verified |
+| 10 / 11 | 27–32 | **Transformer / PV temperature (°C) = `HTEMP[2]` / `HTEMP[3]`** | verified (same values; mapping from the H-protocol reference) |
 | 12 / 13 / 14 | `00 00 000` | GPIO13 / fan lock / unused | generic |
 | 15 | `5472` | Unknown (fan PWM per community, but constant) | — |
 | 16 | `0000` | SCC charge power (W)? Re-check with PV | generic |
@@ -217,17 +218,22 @@ Byte-wise diffs of snapshots, each taken with only the named condition changed:
 
 | Change | What changed | What did **not** change |
 |---|---|---|
-| Schedule P48/P49 23–00 → 19–21 (output off → on) | `QMOD` S → B | `QPIRI`, `QDI`, `QFLAG`, `QBEQI`, `QMCHGCR`, `QMUCHGCR`, `QOPM`, `QPIWS`, `QFS`, `QBOOT`, `QVFW` (the schedule is unreadable) |
+| Schedule P48/P49 23–00 → 19–21 (output off → on) | `QMOD` S → B | `QPIRI`, `QDI`, `QFLAG`, `QBEQI`, `QMCHGCR`, `QMUCHGCR`, `QOPM`, `QPIWS`, `QFS`, `QBOOT`, `QVFW` (no PI30 command carries the schedule) |
+| Schedule P48/P49 19–21 → 23–00 (owner, 21:13) | **`HEEP2[12]` `1921` → `2300`** | every other `HEEP1`/`HEEP2` token |
 | Load 0 W → ~300 W (mode B) | `QPIGS` 4/5/6/8/10/11/15, `QBV`, `Q1` temperatures | `Q1` flags, `QPIWS`, `QWS`, `QFS` |
 | Grid disconnected (mode B, 270 W load) | `QPIGS` 0/1 → 0, `QPIWS` a5 = 1 | `QWS`, `QFS`, `QFLAG`, `Q1` (except temps), `QPICF` stays NAK |
 | Grid reconnected | `QPIWS` a5 back to 0, grid V/Hz back | — |
+| Scheduled output-off time reached while in mode L (21:03 by the wall clock; the inverter clock runs ~10 min slow) | nothing yet: still `L`, charging 2 A, `Q1[4..7]` = `05472 05472 01 01` | — |
+| Output switched off by the schedule (~21:10 wall clock = 21:00 inverter clock) → **mode S** | `QMOD` L → **S**; `QPIGS` output 0 V / 0 Hz, bus 381 → 153 V, **charging stopped** (status `00000000`, charge 0 A), **status 2 `010` → `000` (b9 "switched on" = output on, verified)**; `Q1[17]` 11 → 10; `Q1[4..7]` → `65535 65535 00 00` | `QPIWS`, `QFS` |
 | Battery fell to 22.0 V (P12 back-to-grid) in SBU → **mode L**, AC charging (20:43) | `QMOD` B → L; `QPIGS` output V = grid V (bypass); charge current 2 A (= max AC charge setting); status `00010101` (**b2 charging, b0 AC charging verified**); `Q1[17]` 10 → **11 bulk (verified)**; `Q1[4..7]` back to `65535 65535 00 00`; battery % read **95 % at 22.8 V** (real ≈ 2 %) | `QPIWS`, `QWS`, `QFS`, `QPIRI` |
 
-Snapshots: [`snapshot_schedule_23-00.json`](../tests/fixtures/snapshot_schedule_23-00.json), [`snapshot_schedule_19-21.json`](../tests/fixtures/snapshot_schedule_19-21.json), [`snapshot_B_night_output_on.json`](../tests/fixtures/snapshot_B_night_output_on.json) (all readable commands), [`snapshot_B_night_load_300w.json`](../tests/fixtures/snapshot_B_night_load_300w.json), [`snapshot_B_night_grid_off.json`](../tests/fixtures/snapshot_B_night_grid_off.json), [`snapshot_B_night_grid_restored.json`](../tests/fixtures/snapshot_B_night_grid_restored.json), [`snapshot_L_night_ac_charging.json`](../tests/fixtures/snapshot_L_night_ac_charging.json).
+Snapshots: [`snapshot_schedule_23-00.json`](../tests/fixtures/snapshot_schedule_23-00.json), [`snapshot_schedule_19-21.json`](../tests/fixtures/snapshot_schedule_19-21.json), [`snapshot_B_night_output_on.json`](../tests/fixtures/snapshot_B_night_output_on.json) (all readable commands), [`snapshot_B_night_load_300w.json`](../tests/fixtures/snapshot_B_night_load_300w.json), [`snapshot_B_night_grid_off.json`](../tests/fixtures/snapshot_B_night_grid_off.json), [`snapshot_B_night_grid_restored.json`](../tests/fixtures/snapshot_B_night_grid_restored.json), [`snapshot_L_night_ac_charging.json`](../tests/fixtures/snapshot_L_night_ac_charging.json), [`snapshot_L_after_schedule_off_2103.json`](../tests/fixtures/snapshot_L_after_schedule_off_2103.json), [`snapshot_S_night_output_off.json`](../tests/fixtures/snapshot_S_night_output_off.json), [`probe_h_commands_S.json`](../tests/fixtures/probe_h_commands_S.json) (schedule 19–21), [`probe_heep2_schedule_23-00.json`](../tests/fixtures/probe_heep2_schedule_23-00.json).
+
+The voltage-based battery % jumps between states: 95 % (L, charging, 22.8 V), 15 % (L, 23.6 V), 50 % (S, 23.8 V). It is useless as a level indicator. `Q1[4..7]` flips between `65535 65535 00 00` and `05472 05472 01 01` with no clear link to mode, load or charging; its meaning is still unknown.
 
 **Grid charging despite "Only solar" (verified, expected behaviour):** with P16 = Only solar (confirmed on the LCD), the unit still charges from the grid once it has fallen back to line mode at the P12 voltage. "Only solar" restricts charging only in battery mode, as the Vevor manual says. The current was exactly the P11 limit `QPIRI[13]` = 2 A (22.8 V × 2 A ≈ 46 W; the LCD showed ~43 W). The owner has seen this repeatedly after deep discharge. The unit returns to battery mode at `QPIRI[22]` = 25.0 V (P13).
 
-Still to observe: PV producing (a0, `QPIGS` 12–14/19, status bits b1/b2, `Q1` 2/3/16/17), charging stages, mode S tail fields.
+Still to observe: PV producing (a0, `QPIGS` 12–14/19, status bits b1/b2, `Q1` 2/3/16/17, `HPV`, `HGEN` counting up), absorb/float stages, `HEEP2[11]` with P46/P47 changed, `HGRID` grid power in mode L.
 
 ## Timing and reliability (2026-10-02)
 
@@ -253,9 +259,47 @@ Recommended poll set (all verified, ~3.5 s per full cycle on one connection):
 
 Timeout per command: 1.0 s is enough (max observed answer 0.67 s), plus one retry.
 
-## Timer settings (P46–P49): not readable (verified)
+## Timer settings (P46–P49): readable via `HEEP2` (P48/P49 verified)
 
-The official PI30 specs have **no read command** for the scheduled AC-output on/off or AC-charger start/stop times; `QOPPT`/`QCHPT`/`QOPCHT` (hourly priority tables, newer models) are silent, and so are all clock commands. Snapshot diff (see [State dependence](#state-dependence)): changing the schedule changed nothing except the resulting `QMOD`. HA plan: expose `QMOD` (B/L = output on, S = standby/output off) as the "AC output active" signal; the schedule itself stays on the panel.
+PI30 has no read command for the scheduled AC-output on/off or AC-charger start/stop times: `QOPPT`/`QCHPT`/`QOPCHT` and all clock commands are silent. The Solar Plug snapshot `HEEP2` carries them:
+
+- `HEEP2[12]` = **AC output schedule P48/P49** as `HHhh` (on hour, off hour). **Verified:** `1921` with 19:00–21:00 set, and `2300` after the owner changed it to 23:00–00:00.
+- `HEEP2[11]` = **AC-charger schedule P46/P47** in the same format. **Verified:** `0000` → `0102` after the owner set 01:00–02:00.
+- `HEEP2[14]` = `0000`, probably the dual-output time; the Solar of Things app shows "INV Dual Output Time 00–00".
+- The schedule is evaluated on the **inverter clock** (`HGEN` date/time), which runs about 10 min slow on this unit, so the output switched off at ~21:10 wall time. In mode L (output fed from the grid) the output stays on until the inverter-clock hour is reached.
+
+`QMOD` (B/L = output on, S = standby/output off) and `QPIGS` status 2 b9 remain the live "AC output active" signals.
+
+## Solar Plug H-protocol (no CRC)
+
+This is the dialect of the Solar Plug / Solar of Things Wi-Fi dongle (Solar of Things device type `HPVINV02`). It was reverse-engineered by [rutgerputter/solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome) on a sibling unit (`VMII-6200`, firmware 40.05). The owner approved these 14 read-only queries on 2026-10-02 and **all 14 answered on the first try** (0.25–0.55 s each, mode S). Framing: request `<ASCII> 0x0D` with **no CRC**; response `(<payload> 0x0D` with no CRC. Writes in this dialect (`P…`, `^S???DAT…`, `BMS…`, `PVENGUSE…`) are off-limits.
+
+Samples from [`probe_h_commands_S.json`](../tests/fixtures/probe_h_commands_S.json). Index = 0-based token. "Ref" = the solarplug-esphome mapping; ✓ = also matches our PI30 data or the owner's Solar of Things screenshots (`docs/screenshots/solar_of_things/`).
+
+| Command | Our sample | Decoded |
+|---|---|---|
+| `QPRTL` | `HPVINV02` | Device type (app "Device Type") ✓ |
+| `HIMSG1` | `0040.09 20260119 11` | Firmware 0040.09 ✓ (`QVFW`), firmware date 2026-01-19, revision 11 |
+| `HGEN` | `261002 21:01 01.765 0003.1 0008.5 000000008.5 000000000000` | **Inverter clock** (YYMMDD HH:MM; ~10 min slow), **PV energy today 1.765 kWh, month 3.1, year 8.5, total 8.5** ✓ (exactly the app values). Ref: daily and monthly rollover confirmed |
+| `HSTS` | `00 S000000000000 10200002000S000000000` | Status code `00`; mode letter (`S` here, matches `QMOD`) + status bits; fault bits. Bit meanings unknown |
+| `HGRID` | `239.0 50.0 280 090 70 40 +00000 0 04500 11+00000` | Grid V, Hz ✓; high/low grid-loss V (280/90); high/low grid-loss Hz (70/40); **grid power, signed W** (app "Mains Power" 0.412 kW in mode L); flow-direction code; rated power `04500` (?); tail |
+| `HOP` | `000.0 00.0 00000 00000 000 149 04000 000.0 00002` | Output V, Hz, VA, W, load % ✓; idx 5 `149` unknown (close to the bus voltage in mode S); idx 6 rated power 4000 ✓; idx 7–8 unknown (the app shows "Output DC Comp 2", likely idx 8) |
+| `HBAT` | `02 023.8 050 000 00000 146 000000010000 00000000` | Battery type 2 ✓, voltage ✓, **capacity % = the same voltage estimate as `QPIGS[10]`** (the app's "10 %" is the same estimate, not a SOC), charge A, discharge A, bus V, two flag strings |
+| `HPV` | `000.0 00.0 00000 00000.0 00000 0 060.0 018 06500` | PV V, A, W (ref: verified in daylight); idx 3 generation power (ref: unreliable); idx 6 `060.0` / idx 8 `06500` probably the PV voltage/power limits; others unknown. **Re-check with PV** |
+| `HPVB` | `000.0 00.0 00000 0 380.0 000…` | PV V, A, W, PV charging mark, bus V (`380.0` while `QPIGS` said 153 in mode S, so possibly stale) |
+| `HTEMP` | `028 039 032 032 039 030 030 0000…` | Temperatures °C: **inverter 28, boost 39, transformer 32, PV 32**. These equal `Q1[8..11]`, and boost = `QPIGS[11]` "heat sink". Idx 4 = the maximum of idx 0–3 (true in both our and the ref sample), idx 5/6 = fan 1/2 speed % (the ref labels idx 4 as fan 1). The app shows "PV Temperature" |
+| `HBMS1` / `HBMS2` / `HBMS3` | all zero except `HBMS1[4]` = `002.0` | BMS summary / min-max cells / cell list; empty (no BMS) |
+| `HEEP1` | `1 050 002 01200110230 002 1 1 1 0 0 010 020 095 050 029.2 029.1 021.6 012 0 1` | Settings snapshot: [1] max charge 50 A ✓, [2] max AC charge 2 A ✓, [3] packed string; **char 3 = P43 solar supply priority, 0 BLU / 1 LBU (verified)**, [4] `002` (ref: return-to-homepage flag; ours disabled ✓), [10] `010` BMS lock SOC 10 % (app), [12] `095` restore-battery-discharge SOC 95 % (app), [13] `050` (app: startup SOC / second-output restore SOC 50 %), [14–16] bulk 29.2 / float 29.1 / cut-off 21.6 ✓, [17] grid-connected current 12 A (app; ref verified) |
+| `HEEP2` | `1 022.0 020 022.0 022.0 025.0 0 029.2 060 120 030 0000 2300 05 0000 26.0 50000` | [1] low-battery alarm 22.0 V (app), [2] `020` (app: restore-mains-charging SOC / parallel-shutdown SOC 20 %), [3] `022.0` (app: parallel-shutdown voltage), [4] back-to-grid 22.0 ✓, [5] back-to-battery 25.0 ✓, [7] equalization voltage 29.2 ✓, [8] eq. time 60 ✓, [9] eq. timeout 120 ✓, [10] eq. interval 30 ✓, **[11] AC-charger schedule P46/P47 (verified)**, **[12] AC output schedule P48/P49 (verified)**, [13] second-output restore delay 5 min (app), [14] dual-output time?, [15] second-output restore voltage 26.0 (app), [16] packed |
+
+| `HIMSG2` | `04000 06500 04000 04000 000…` | Ratings (W): output 4000 ✓, PV max 6500 (= `HPV[8]`), two more 4000 values; found by name-variant probing |
+| `HEEP3` | `2048 2048 2048 0150 04500 000 000…` | Unknown; three `2048` look like ADC mid-scale/calibration values, `04500` also appears in `HGRID[8]`; found by name-variant probing |
+
+**Silent H name variants (do not retry):** `HEEP0 HEEP4 HBMS0 HBMS4 HIMSG0 HIMSG3 HGEN1 HGEN2 HSTS1 HSTS2 HPV1 HPV2 HPVB1 HTEMP1 HOP1 HOP2 HGRID1 HBAT1 HBAT2 HDOP HDOP1 HPAR HPAR1 HLOAD HLGEN HCON HUSE HTIME HCLK HSCH HBEQ` ([`probe_h_variants.json`](../tests/fixtures/probe_h_variants.json)).
+
+Per-setting read sources and write commands: [settings-map.md](settings-map.md).
+
+Not found in either dialect: load (output) energy counters, a true SOC (no BMS), fault history (`QPIHF` NAK).
 
 ## Setting commands (implemented, unverified on this unit)
 
@@ -266,7 +310,8 @@ Agents never send these to the device (see [AGENTS.md](../AGENTS.md)); the owner
 | `PE<x>` / `PD<x>` | Enable / disable a `QFLAG` option | x ∈ a b j k u v x y z |
 | `POP<NN>` | Output source priority | only owner-verified codes (now `01` = SBU, assuming `POP` uses the same menu-position code as `QPIRI[16]`) |
 | `PCP<NN>` | Charger source priority | only verified codes (now `02` = only solar) |
-| `MCHGC<m><nn>` | Max total charging current, m = 0 (single unit) | value must be in `QMCHGCR`, < 100 A |
+| `MNCHGC<nnn>` | Max total charging current (the PI30 `MCHGC<mnn>` form is not used) | value must be in `QMCHGCR` |
+| `PVENGUSE<NN>` | Solar supply priority P43: `00` battery first (BLU), `01` load first (LBU) | both codes (read side owner-verified via `HEEP1[3]`) |
 | `MUCHGC<nnn>` | Max utility charging current | value must be in `QMUCHGCR` |
 | `PBCV<nn.n>` / `PBDV<nn.n>` | Back to utility (P12) / back to battery (P13) | 24 V: 22.0–25.5 / 24.0–29.0, step 0.5 |
 | `PSDV<nn.n>` / `PCVV<nn.n>` | Cut-off (P29) / bulk (P26) voltage | 24 V: 20.0–26.0 / 24.0–30.0, step 0.1 |
@@ -276,7 +321,8 @@ Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type
 ## Integration implementation notes
 
 - [`protocol/client.py`](../custom_components/voltronic_solar_inverter/protocol/client.py): one persistent connection, `asyncio.Lock`, read until CR, CRC check, 2 s timeout, one retry for queries (first-command-after-idle loss), stale bytes drained before each command, transparent reconnect when the gateway closed the connection, 0.1 s gap between exchanges. Writes are never retried.
-- Only answering commands are polled; see [integration.md](integration.md).
+- Only answering commands are polled; see [integration.md](integration.md). H queries go out without CRC through `query_plain()`, which accepts only the owner-approved `PLAIN_QUERIES`; the dialect is detected at start-up with `QPRTL`.
+- H responses have no CRC, so a corrupted H answer can only be caught by the parsers (field count / number format).
 - The gateway address comes from the config flow (the prototype hard-codes `192.168.1.47:8899`).
 
 ## Sources
@@ -288,4 +334,5 @@ Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type
 | [ardupic/voltronic-inverter-communication-protocols](https://github.com/ardupic/voltronic-inverter-communication-protocols) | *Axpert Remote Panel Protocol (VMIII/KING/MKSIII)*, explicitly "based on the Axpert VMII RS232 protocol": `QWFS`, `QDOP`, QPIWS a0 = PV loss; MKS II–IV (`QBATCD`, `QOPCHT`); MAX / MAXII / VMIV |
 | [NUT Voltronic UPS protocol](https://networkupstools.org/protocols/voltronic.html) | UPS-protocol commands: `QMD`, `QBV`, `QWS`, `QBT`, `QGR` (answering here) and many silent ones |
 | [syssi/esphome-pipsolar](https://github.com/syssi/esphome-pipsolar), [ned-kelly/docker-voltronic-homeassistant](https://github.com/ned-kelly/docker-voltronic-homeassistant), [fadmaz/siseli-ha](https://github.com/fadmaz/siseli-ha) | Command sets used in practice (`QBATCD`, `QPGS0`, `QPIGS2`, `QET/QLT`); nothing beyond the above |
+| [rutgerputter/solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome) | The Solar Plug / Solar of Things **H-protocol** (no CRC): `QPRTL`, `HGEN`, `HEEP1/2`, `HTEMP`, … reverse-engineered on a `VMII-6200` fw 40.05 (`HPVINV02`); field layouts in its `docs/protocol/H_COMMANDS.md` and `protocol/fields.yaml`. Also reports the same "first command after idle times out once" behaviour |
 | [diysolarforum: GD3024EMH comms](https://diysolarforum.com/threads/figuring-out-gd3024emh-inverter-comms.122039/) | A sibling 24 V VMII-3000 unit (fw 00010.13): identical `QDI`; `QT`, `QET`, `QEY`, `QVFW3`, `QBAT`, `QBCV`, `QBCHGS` NAK there |

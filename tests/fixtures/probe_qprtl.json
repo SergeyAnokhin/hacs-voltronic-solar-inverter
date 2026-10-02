@@ -1,0 +1,13 @@
+{
+  "host": "192.168.1.47",
+  "taken_at": "2026-10-02 21:00:29",
+  "stream": {
+    "QPRTL": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 2.063,
+      "error": "timeout"
+    }
+  }
+}

@@ -78,12 +78,12 @@ def test_escaped_crc_in_a_write_frame():
 
 @pytest.mark.parametrize(
     ("amps", "text", "frame_hex"),
-    [(10, "MCHGC010", "4d43484743303130 84260d"), (50, "MCHGC050", "4d43484743303530 48e20d")],
+    [(10, "MNCHGC010", "4d4e434847433031304db90d"), (50, "MNCHGC050", "4d4e43484743303530817d0d")],
 )
 def test_max_charging_current_frames(amps, text, frame_hex):
     cmd = commands.set_max_charging_current(amps, CHARGE_OPTIONS)
     assert cmd.text == text
-    assert cmd.frame == bytes.fromhex(frame_hex.replace(" ", ""))
+    assert cmd.frame == bytes.fromhex(frame_hex)
 
 
 @pytest.mark.parametrize("amps", [0, 15, 90, 100, 50.0, True, "50"])
@@ -92,9 +92,29 @@ def test_max_charging_current_rejects(amps):
         commands.set_max_charging_current(amps, CHARGE_OPTIONS)
 
 
-def test_max_charging_current_rejects_three_digit_option():
+def test_max_charging_current_three_digits():
+    assert commands.set_max_charging_current(120, (100, 120)).text == "MNCHGC120"
     with pytest.raises(InvalidCommandError):
-        commands.set_max_charging_current(100, (100,))
+        commands.set_max_charging_current(1000, (1000,))
+
+
+@pytest.mark.parametrize(
+    ("code", "frame_hex"),
+    [(0, "5056454e4755534530305e610d"), (1, "5056454e4755534530314e400d")],
+)
+def test_solar_supply_priority_frames(code, frame_hex):
+    assert commands.set_solar_supply_priority(code).frame == bytes.fromhex(frame_hex)
+
+
+@pytest.mark.parametrize("code", [2, -1, "1", True, None])
+def test_solar_supply_priority_rejects(code):
+    with pytest.raises(InvalidCommandError):
+        commands.set_solar_supply_priority(code)
+
+
+def test_priority_builders_reject_bool():
+    with pytest.raises(InvalidCommandError):
+        commands.set_output_source_priority(True)
 
 
 @pytest.mark.parametrize(

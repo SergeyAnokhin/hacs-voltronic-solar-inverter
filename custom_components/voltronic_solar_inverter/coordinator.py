@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, LOGGER
 from .protocol import (
@@ -15,26 +17,48 @@ from .protocol import (
     GeneralStatus,
     InverterClient,
     InverterError,
+    InverterNakError,
+    InverterProtocolError,
+    InverterTimeoutError,
     RatedInfo,
     WarningStatus,
 )
+from .protocol.h_parsers import Generation, SettingsEeprom1, SettingsEeprom2, Temperatures
+from .protocol.parsers import Equalization, parse_q1_charge_stage
 
 
 @dataclass(frozen=True, slots=True)
 class FastData:
-    """QPIGS + QMOD."""
+    """QPIGS + QMOD (required), HGRID (optional, H dialect)."""
 
     status: GeneralStatus
     mode: str
+    grid_power: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class SlowData:
-    """QPIRI + QFLAG + QPIWS."""
+    """QPIRI + QFLAG + QPIWS (required); the rest is optional (None = not read)."""
 
     rated: RatedInfo
     flags: dict[str, bool]
     warnings: WarningStatus
+    fetched_at: datetime | None = None
+    equalization: Equalization | None = None  # QBEQI
+    charge_stage: str | None = None  # Q1[17]; None also for an unknown code
+    has_q1: bool = False
+    heep1: SettingsEeprom1 | None = None  # H dialect
+    heep2: SettingsEeprom2 | None = None
+    generation: Generation | None = None
+    temperatures: Temperatures | None = None
+
+    @property
+    def clock_offset(self) -> int | None:
+        """Inverter clock minus HA time, in whole minutes (positive = inverter ahead)."""
+        if self.generation is None or self.fetched_at is None:
+            return None
+        clock = self.generation.clock.replace(tzinfo=dt_util.get_default_time_zone())
+        return round((clock - self.fetched_at).total_seconds() / 60)
 
 
 @dataclass(slots=True)
@@ -88,21 +112,69 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
     async def _fetch(self) -> DataT:
         raise NotImplementedError
 
+    @property
+    def h_supported(self) -> bool:
+        return self.identity.h_protocol is not None
+
+    async def _optional[T](self, request: Awaitable[T]) -> T | None:
+        """Run a query whose failure must not make every entity unavailable.
+
+        Timeouts, NAK and malformed answers give None; connection errors still
+        fail the whole update.
+        """
+        try:
+            return await request
+        except (InverterTimeoutError, InverterNakError, InverterProtocolError) as err:
+            LOGGER.debug("Optional query failed: %s", err)
+            return None
+
 
 class VoltronicFastCoordinator(_VoltronicCoordinator[FastData]):
-    """Live values: QPIGS and QMOD."""
+    """Live values: QPIGS and QMOD, plus HGRID grid power when the H dialect exists."""
 
     async def _fetch(self) -> FastData:
         status = await self.client.read_general_status()
         mode = await self.client.read_mode()
-        return FastData(status=status, mode=mode)
+        grid_power = None
+        if self.h_supported:
+            grid_power = await self._optional(self.client.read_grid_power())
+        return FastData(status=status, mode=mode, grid_power=grid_power)
 
 
 class VoltronicSlowCoordinator(_VoltronicCoordinator[SlowData]):
-    """Ratings/settings, option flags and warning bits: QPIRI, QFLAG, QPIWS."""
+    """Settings, flags, warnings (QPIRI, QFLAG, QPIWS), plus optional QBEQI, Q1
+    and the H-dialect snapshots HEEP1, HEEP2, HGEN, HTEMP."""
 
     async def _fetch(self) -> SlowData:
-        rated = await self.client.read_rated_info()
-        flags = await self.client.read_flags()
-        warnings = await self.client.read_warnings()
-        return SlowData(rated=rated, flags=flags, warnings=warnings)
+        client = self.client
+        rated = await client.read_rated_info()
+        flags = await client.read_flags()
+        warnings = await client.read_warnings()
+        equalization = await self._optional(client.read_equalization())
+        q1 = await self._optional(client.query("Q1"))
+        charge_stage = None
+        if q1 is not None:
+            charge_stage = await self._optional(_parse_charge_stage(q1))
+        heep1 = heep2 = generation = temperatures = None
+        if self.h_supported:
+            heep1 = await self._optional(client.read_settings_1())
+            heep2 = await self._optional(client.read_settings_2())
+            generation = await self._optional(client.read_generation())
+            temperatures = await self._optional(client.read_temperatures())
+        return SlowData(
+            rated=rated,
+            flags=flags,
+            warnings=warnings,
+            fetched_at=dt_util.now(),
+            equalization=equalization,
+            charge_stage=charge_stage,
+            has_q1=q1 is not None,
+            heep1=heep1,
+            heep2=heep2,
+            generation=generation,
+            temperatures=temperatures,
+        )
+
+
+async def _parse_charge_stage(payload: str) -> str | None:
+    return parse_q1_charge_stage(payload)

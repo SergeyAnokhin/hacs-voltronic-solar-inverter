@@ -20,6 +20,18 @@ DEFAULT_HOST = "192.168.1.47"
 DEFAULT_PORT = 8899
 DEFAULT_CMDS = ["QPIGS", "QPIRI", "QPIWS", "QMOD", "QFLAG", "QID", "QVFW", "QT", "QET", "QED", "QOPPT", "QCHPT"]
 QUERY_RE = re.compile(r"^Q[A-Z0-9]{1,14}$")
+NO_CRC = False  # set by --no-crc
+# Read-only Solar Plug "H" queries, explicitly approved by the owner (2026-10-02). Exact names only.
+H_READ_ALLOWED = {
+    "HSTS", "HGRID", "HOP", "HBAT", "HPV", "HPVB", "HTEMP", "HGEN", "HIMSG1",
+    "HBMS1", "HBMS2", "HBMS3", "HEEP1", "HEEP2",
+}
+# Read-only discovery guesses (name variants without parameters), approved by the owner for research.
+H_READ_ALLOWED |= {
+    "HEEP0", "HEEP3", "HEEP4", "HBMS0", "HBMS4", "HIMSG0", "HIMSG2", "HIMSG3", "HGEN1", "HGEN2",
+    "HSTS1", "HSTS2", "HPV1", "HPV2", "HPVB1", "HTEMP1", "HOP1", "HOP2", "HGRID1", "HBAT1", "HBAT2",
+    "HDOP", "HDOP1", "HPAR", "HPAR1", "HLOAD", "HLGEN", "HCON", "HUSE", "HTIME", "HCLK", "HSCH", "HBEQ",
+}
 T0 = time.monotonic()
 
 
@@ -42,9 +54,12 @@ def escape(b):
 
 def build_frame(cmd):
     # Safety rule (AGENTS.md section 0): read-only. Refuse anything that is not a Q query.
-    if not QUERY_RE.match(cmd):
+    if not (QUERY_RE.match(cmd) or cmd in H_READ_ALLOWED):
         raise ValueError(f"refusing to send non-query command {cmd!r}")
     raw = cmd.encode("ascii")
+    if NO_CRC:
+        # Solar Plug / Solar of Things dongles send plain ASCII + CR (no CRC).
+        return raw + b"\r"
     crc = crc16(raw)
     return raw + bytes([escape(crc >> 8), escape(crc & 0xFF)]) + b"\r"
 
@@ -162,7 +177,10 @@ def main():
     ap.add_argument("--gap", type=float, help="pause between commands (default: 0.3 legacy, 0.1 new)")
     ap.add_argument("--timeout", type=float, default=2.0)
     ap.add_argument("--save", help="write all results to this JSON file")
+    ap.add_argument("--no-crc", action="store_true", help="send plain ASCII + CR without CRC (Solar Plug style)")
     a = ap.parse_args()
+    global NO_CRC
+    NO_CRC = a.no_crc
 
     cmds = [c.upper() for c in a.cmds + a.extra]
     out = {}

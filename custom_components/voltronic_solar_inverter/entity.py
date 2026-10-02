@@ -11,9 +11,24 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import VoltronicFastCoordinator, VoltronicSlowCoordinator
-from .protocol import InvalidCommandError, InverterError, InverterNakError, WriteCommand
+from .protocol import (
+    DeviceIdentity,
+    InvalidCommandError,
+    InverterError,
+    InverterNakError,
+    WriteCommand,
+)
 
 type VoltronicCoordinator = VoltronicFastCoordinator | VoltronicSlowCoordinator
+
+# Coordinator data fields that come from the CRC-less H dialect.
+H_FIELDS = frozenset({"grid_power", "heep1", "heep2", "generation", "temperatures"})
+
+
+def is_supported(description: EntityDescription, identity: DeviceIdentity) -> bool:
+    """False for H-dialect entities on inverters that do not answer QPRTL."""
+    requires = getattr(description, "requires", None)
+    return requires not in H_FIELDS or identity.h_protocol is not None
 
 
 class VoltronicEntity[CoordinatorT: VoltronicCoordinator](CoordinatorEntity[CoordinatorT]):
@@ -34,6 +49,20 @@ class VoltronicEntity[CoordinatorT: VoltronicCoordinator](CoordinatorEntity[Coor
             serial_number=identity.serial_number,
             sw_version=identity.firmware_version,
         )
+
+    @property
+    def available(self) -> bool:
+        """Also unavailable when the optional part this entity needs was not read.
+
+        Descriptions may set ``requires`` to a coordinator data field name.
+        """
+        if not super().available:
+            return False
+        requires = getattr(self.entity_description, "requires", None)
+        if requires is None:
+            return True
+        value = getattr(self.coordinator.data, requires)
+        return value is not None and value is not False
 
 
 class VoltronicControlEntity(VoltronicEntity[VoltronicSlowCoordinator]):

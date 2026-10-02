@@ -32,6 +32,7 @@ docs/                      living documentation (this folder)
 .claude/skills/            update-docs, session-retro
 python_scripts/            working prototype (get_inverter_info.py) + HA examples
 custom_components/         official HA example integrations (reference, read-only) + the future integration
+esphome/                   ESPHome configs for ESP32 + MAX3232 (native pipsolar, or RS232-TCP bridge)
 ```
 
 Full file map: [code-map.md](code-map.md).
@@ -40,20 +41,25 @@ Full file map: [code-map.md](code-map.md).
 
 1. **HACS packaging (owner's decision):** HACS installs the *first* folder under `custom_components/`, currently the reference `detailed_hello_world_push`. The reference examples must move elsewhere (e.g. `reference/`) before HACS works; until then install manually.
 2. **Owner to verify write commands on the real unit** (read back with `QPIRI`/`QFLAG` after each): `PE<x>`/`PD<x>` for each flag; `POP01` really selects SBU and `PCP02` "only solar" under this firmware's menu-position codes; `MCHGC0nn`, `MUCHGCnnn`; `PBCV`/`PBDV`/`PSDV`/`PCVV` ranges. Then confirm the remaining priority codes (output 0/2, charger 0/1) so they can be added to the `*_VERIFIED` sets.
-3. Not implemented: float voltage `PBFT` (range unknown), battery low-alarm voltage, equalization, battery type, AC output on/off / schedules P46–P49 (no public command; output state only via `QMOD`).
+3. Not implemented as writes: float voltage `PBFT` (range unknown, NAK on the reference unit), battery low-alarm voltage (no command), equalization (`PBEQ*`, deliberately left read-only: equalizing a LiFePO4 bank is harmful), battery type `PBT`, input range `PGR`, clock `DAT`, dual output, feed-in `PEd` (owner keeps it off), and the P46–P49 schedules / AC output on/off (no known command). The schedules are **read** via `HEEP2`.
 4. **Still to do with PV producing:** snapshot `QPIGS`/`Q1`/`QPIWS` with the array connected and charging (PV fields 12–14/19, status bits b1/b2, `QPIWS` a0 "PV loss" clearing, `Q1` charge status/timers), then record fixtures and adjust entity defaults.
-5. Optional entities: `Q1` temperatures / charge stage, `QBEQI` equalization status (spec layouts known, not polled).
+5. ~~Optional entities `Q1` charge stage, `QBEQI`~~ done (0.2.0). **Owner to check on the real unit** that `Q…` (CRC) and `H…` (no CRC) queries mixed on one persistent connection keep answering (research sent them one per connection); and the sign of `HGRID[6]` grid power in mode L.
 6. ~~Owner to re-check LCD P16~~ done 2026-10-02: P16 shows "Only solar" while `QPIRI[17]` = 2, so the menu-position reading is confirmed (see "Priority-code check" in [inverter-protocol.md](inverter-protocol.md)). P01 codes 0 and 2 are still unconfirmed.
 7. Optional, owner's decision: enable P25 "Record fault code", then re-test `QPIHF`/`QPICF` (they currently answer `NAK`).
-8. Optional: CI workflow (GitHub Actions on Linux) running `pytest` and hassfest/HACS validation.
+8. Pin the unknown read positions in [settings-map.md](settings-map.md) (rows marked `?`): the owner changes one LCD setting at a time and the agent diffs `QPIRI QFLAG QBEQI HEEP1 HEEP2 HEEP3`.
+9. Optional: CI workflow (GitHub Actions on Linux) running `pytest` and hassfest/HACS validation.
 
 ## Protocol research results (2026-10-02)
+
+Resume point with tried/worked/failed, blind spots and the next test plan: [research-summary.md](research-summary.md).
 
 About 80 candidate `Q` commands from mpp-solar, the official Voltronic PDFs (PI30, PI30MAX, the VMII-based remote-panel protocol, PI00, NUT's UPS protocol) and forums were tried one at a time. Full catalogue with sources: [inverter-protocol.md](inverter-protocol.md#command-catalogue).
 
 - **New answering commands:** `QMD`, `QBV`, `QWS`, `QBT`, `QGR` (UPS protocol). They add nothing over `QPIRI`/`QPIGS`, so they are not worth polling. `QPIHF`/`QPICF` are known but answer `NAK`.
-- **Verified unreadable (do not retry):** clock (`QT`), energy counters (`QET`/`QE*`/`QL*`), schedules (`QOPPT`/`QCHPT`/P46–P49), dual output (`QDOP`), BMS (`QBMS`/`QLITH0`), charge stage/CV time (`QCST`/`QCVT`), temperatures (`QTPR`), PV2/parallel, plus about 50 more.
-- **Newly understood:** `QDI` fully decoded (factory defaults); `QBEQI` decoded; `QPIGS[17..20]` = fan voltage offset, EEPROM version, **PV charging power**, status 2 (switched on); `QPIWS` a5 LINE_FAIL verified by pulling the grid; a0 = "PV loss" (spec); `Q1[9]` = heat-sink temperature, `Q1[8,10,11]` = other internal temperatures (probable).
+- **Verified silent in PI30 (do not retry):** `QT`, `QET`/`QE*`/`QL*`, `QOPPT`/`QCHPT`, `QDOP`, `QBMS`/`QLITH0`, `QCST`/`QCVT`, `QTPR`, PV2/parallel, plus about 50 more.
+- **Breakthrough: the Solar Plug H-protocol (no CRC).** The Solar of Things app screenshots (`docs/screenshots/solar_of_things/`) showed values PI30 cannot give. The vendor Wi-Fi dongle uses a second, CRC-less dialect (`QPRTL` → `HPVINV02`). With the owner's approval, 14 read-only H queries were sent and all answered: **`HGEN` = inverter clock + PV energy today/month/year/total (matches the app)**, **`HEEP2[12]` = AC output schedule P48/P49 (verified by changing 19–21 → 23–00)**, `HTEMP` = inverter/boost/transformer/PV temperatures + fans, `HGRID` = signed grid power, `HEEP1/2` = full settings snapshots (dual output, BMS-SOC thresholds, equalization). Details: [inverter-protocol.md](inverter-protocol.md#solar-plug-h-protocol-no-crc).
+- **Still not readable:** load-energy counters, true SOC (no BMS), fault history.
+- **Newly understood:** `QDI` fully decoded (factory defaults); `QBEQI` decoded; `QPIGS[17..20]` = fan voltage offset, EEPROM version, **PV charging power**, status 2 (switched on); `QPIWS` a5 LINE_FAIL verified by pulling the grid; a0 = "PV loss" (spec); `Q1[8..11]` = inverter / boost (= `QPIGS` "heat sink") / transformer / PV temperatures (equal to `HTEMP[0..3]`); `QPIGS` status 2 b9 = output on (verified in mode S).
 - **Not available at all:** true SOC (no BMS link; the voltage-based % is wrong for LiFePO4), battery temperature (no sensor), the inverter's own idle consumption (below the 1 A resolution of the discharge current).
 - **Reliability:** the first command of a new connection is occasionally lost after the gateway has been idle; retry once.
 
@@ -84,7 +90,20 @@ About 80 candidate `Q` commands from mpp-solar, the official Voltronic PDFs (PI3
 | Flags (diagnostic): buzzer, power saving, overload bypass/restart, over-temp restart, backlight, fault record | `QFLAG` | diagnostic binary sensors | off |
 | Equalization enabled/active, voltage, period | `QBEQI` | diagnostic | off |
 | Device info: model, serial, firmware 1/2, protocol | `QMN`, `QID`, `QVFW`, `QVFW2`, `QPI` | device registry | — |
-| PV energy, load energy | integrate PV power / load power | HA Riemann-sum helper + utility meter (the inverter does not expose counters) | user-side |
+| PV energy, load energy | integrate PV power / load power | HA Riemann-sum helper + utility meter | user-side (superseded for PV by `HGEN`, see below) |
+
+### Additional entities via the H-protocol (implemented in 0.2.0; current list in [integration.md](integration.md#entities))
+
+| Entity | Source | Type / unit | Note |
+|---|---|---|---|
+| PV energy today / month / year / total | `HGEN` 2–5 | sensor kWh, `total_increasing` (total) | native counters, match the app; replaces the Riemann helper for PV |
+| Inverter clock / clock offset | `HGEN` 0–1 | diagnostic timestamp | unit runs ~10 min slow; minute resolution |
+| AC output schedule (on hour, off hour) | `HEEP2[12]` | diagnostic sensors | verified |
+| AC charger schedule | `HEEP2[11]` | diagnostic | unverified |
+| Inverter / boost / transformer / PV temperature, fan 1/2 speed | `HTEMP` | sensors °C / % | temps also in `Q1` |
+| Grid power (signed) | `HGRID[6]` | sensor W | verify in mode L |
+| Low-battery alarm voltage, dual-output and BMS-SOC thresholds | `HEEP1`/`HEEP2` | diagnostic | positions from the reference project + app screenshots |
+| Firmware date | `HIMSG1` | device info | |
 
 ## Decisions log
 
@@ -97,7 +116,7 @@ About 80 candidate `Q` commands from mpp-solar, the official Voltronic PDFs (PI3
 | 2026-10-02 | Output schedule (P46–P49) is not readable via `Q` commands (diff of 13 responses showed nothing); output on/off is observed through `QMOD` `S`↔`B`. |
 | 2026-10-02 | `CLAUDE.md` imports `AGENTS.md` so both Claude Code and other agents use the same rules. |
 | 2026-10-02 | Owner's battery is a 24 V LiFePO4 bank set as "User-defined", no BMS. Keep the inverter's battery % only as an "estimate" sensor (owner: "it can stay, but it is calculated wrongly"). |
-| 2026-10-02 | Energy counters, clock, schedules, dual output and BMS data are confirmed unreadable over RS232. Energy will be computed in HA from power. |
+| 2026-10-02 | Energy counters, clock, schedules, dual output and BMS data are not readable through **PI30**; later the same day they were found in the Solar Plug H-protocol (see the next rows). |
 | 2026-10-02 | PV-related verification postponed to a daytime session (owner disconnects PV at night). |
 | 2026-10-02 | Integration 0.1.0 implemented: protocol layer without HA imports (`protocol/`), fast (`QPIGS`+`QMOD`, 10 s) and slow (`QPIRI`+`QFLAG`+`QPIWS`, 60 s) coordinators, config + options flow, diagnostics with serial redaction. |
 | 2026-10-02 | Priority codes follow the owner's reading of this firmware (LCD menu position): output 0 solar first, 1 SBU (confirmed), 2 battery first (guess); charger 0 solar first, 1 solar+utility, 2 only solar (confirmed). Only confirmed codes are writable. |
@@ -105,3 +124,14 @@ About 80 candidate `Q` commands from mpp-solar, the official Voltronic PDFs (PI3
 | 2026-10-02 | Battery level % kept as a disabled-by-default "estimate" sensor; energy is computed in HA (Integral + Utility meter helpers), documented in README. |
 | 2026-10-02 | QPIWS is polled by the slow coordinator (owner's spec), so warnings lag by up to the slow interval (default 60 s). |
 | 2026-10-02 | Owner re-checked the LCD: P16 = "Only solar" while `QPIRI[17]` = 2, so the menu-position reading is confirmed despite the `QDI`/manual hint. Grid charging at the P11 limit (2 A) after falling back to line mode at P12 is expected with "Only solar" (it restricts battery mode only), not a bug. |
+| 2026-10-02 | Owner approved sending the read-only Solar Plug H queries `HSTS HGRID HOP HBAT HPV HPVB HTEMP HGEN HIMSG1 HBMS1 HBMS2 HBMS3 HEEP1 HEEP2` (no CRC) and `QPRTL`; enforced by an exact allow-list in `tools/probe_inverter.py`. H-dialect writes stay forbidden. |
+| 2026-10-02 | P48/P49 AC output schedule is readable as `HEEP2[12]` (`HHhh`), verified 19–21 → 23–00. The inverter clock runs ~10 min slow (owner noticed the output switched off at ~21:10). |
+| 2026-10-02 | Owner wants every LCD program at least readable, and later writable (priorities, P48/P49 schedule). Mapping and candidate write commands collected in [settings-map.md](settings-map.md). Writes are documented only; the owner tests them himself. No public command writes P46–P49. |
+| 2026-10-02 | H name-variant probing found `HIMSG2` (ratings) and `HEEP3` (unknown); 31 other variants are silent. The Wi-Fi dongle and the Elfin gateway are never connected at the same time (owner swaps them), so no bus conflict. |
+| 2026-10-02 | Verified: `HEEP2[11]` = P46/P47 AC-charger schedule (owner set 01–02); `HEEP1[3]` 4th char = P43 solar supply priority (owner switched BLU → LBU, PV now feeds the load first). |
+| 2026-10-02 | Owner's interests for control: P46/P47 and P48/P49 schedules, output/charger priorities, P43. P44 (feed-in to grid) must stay off: the owner does not export energy. |
+| 2026-10-02 | BMS settings/values (P37–P41, `HBMS*`): keep them in the integration when the H-protocol is added, but **disabled by default** (HA `entity_registry_enabled_default=False`); the owner cannot test them (no BMS link). |
+| 2026-10-02 | Owner changed P02/P12/P13/P26/P27/P29 by one step on the LCD; every change appeared in both `QPIRI` and `HEEP1`/`HEEP2`, so these read positions are verified ([settings-map.md](settings-map.md)). P05 (battery type) deliberately not touched (may reset P26/P27/P29 presets). |
+| 2026-10-02 | Integration 0.2.0: the research findings were added. The client sends the owner-approved H queries without CRC (exact allow-list `PLAIN_QUERIES`); the H dialect is detected at start-up with `QPRTL`. New read entities: PV energy today/month/year/total (`HGEN`), inverter clock + offset, AC output (P48/P49) and AC charger (P46/P47) schedules, P43, battery low-alarm voltage, temperatures/fans (`HTEMP`), grid power (`HGRID`), charge stage (`Q1`), equalization (`QBEQI`); dual-output, BMS-SOC and grid-tie values disabled by default. Optional queries (Q1, QBEQI, H*) fail softly: only their entities become unavailable. |
+| 2026-10-02 | New writes (controls option only): P43 select (`PVENGUSE00/01`, both read codes owner-verified). Max charging current now uses `MNCHGC<nnn>` (ACKed + read back on the sibling VMII-6200) instead of PI30 `MCHGC<mnn>`. Output priority code 2 relabelled "utility first" (POP mapping of the reference project), still not selectable. Equalization stays read-only on purpose (LiFePO4). |
+| 2026-10-02 | Owner asked for an ESPHome alternative (ESP32 + MAX3232 on the RS232 port, read and write). Added `esphome/`: native config on core `pipsolar` (PI30 only, no H dialect/energy counters) with an opt-in controls package, and a stream-server bridge on port 8899 so the HACS integration works unchanged. Both pass `esphome config`; not yet tried on the real unit. The GD5548JMH RJ45 pinout is unknown: reuse the Elfin cable or measure. See [esphome.md](esphome.md). |

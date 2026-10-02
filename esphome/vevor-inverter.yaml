@@ -1,0 +1,180 @@
+# ESPHome firmware for an ESP32 + MAX3232 wired to the RS232 (RJ45) port of a
+# Vevor GD5548JMH (Voltronic VMII-4000, PI30 protocol, 2400 baud 8N1).
+#
+# Uses the built-in ESPHome `pipsolar` component (PI30 Q-queries with CRC).
+# This file is READ-ONLY. To add setting controls (selects/numbers/switches),
+# uncomment the `controls` package below. See docs/esphome.md for wiring,
+# limitations and which write commands are unverified on this firmware.
+#
+# Only one master may talk to the RS232 port: disconnect the Elfin gateway and
+# the Wi-Fi dongle while this ESP32 is connected.
+
+substitutions:
+  name: vevor-inverter
+  friendly_name: Vevor Inverter
+  uart_tx_pin: GPIO17  # ESP32 TX -> MAX3232 TXD/TX (TTL side)
+  uart_rx_pin: GPIO16  # ESP32 RX <- MAX3232 RXD/RX (TTL side)
+
+# Setting controls (writes). Off by default, like the HA integration's
+# "Enable control entities" option. Uncomment both lines to enable them.
+# packages:
+#   controls: !include packages/vevor-controls.yaml
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO  # DEBUG shows every pipsolar command and timeout
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name} fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+uart:
+  id: uart_inverter
+  tx_pin: ${uart_tx_pin}
+  rx_pin: ${uart_rx_pin}
+  baud_rate: 2400
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+pipsolar:
+  - id: inverter0
+    uart_id: uart_inverter
+    # One poll command per tick, round-robin over QPIGS/QPIRI/QMOD/QFLAG/QPIWS.
+    update_interval: 2s
+
+sensor:
+  - platform: pipsolar
+    pipsolar_id: inverter0
+    # QPIGS (live)
+    grid_voltage: { name: Grid voltage }
+    grid_frequency: { name: Grid frequency }
+    ac_output_voltage: { name: AC output voltage }
+    ac_output_frequency: { name: AC output frequency }
+    ac_output_apparent_power: { name: AC output apparent power }
+    ac_output_active_power: { name: AC output active power }
+    output_load_percent: { name: Output load }
+    bus_voltage: { name: Bus voltage, entity_category: diagnostic }
+    battery_voltage: { name: Battery voltage }
+    battery_charging_current: { name: Battery charging current }
+    battery_discharge_current: { name: Battery discharge current }
+    # Voltage-derived estimate, not a real SOC (no BMS link on this unit).
+    battery_capacity_percent: { name: Battery estimate (voltage based) }
+    inverter_heat_sink_temperature: { name: Heat sink temperature }
+    pv_input_voltage: { name: PV voltage }
+    pv_input_current_for_battery: { name: PV current }
+    pv_charging_power: { name: PV charging power }
+    battery_voltage_scc: { name: SCC battery voltage, entity_category: diagnostic }
+    # QPIRI (settings, read back after every write)
+    battery_recharge_voltage: { id: qpiri_recharge_v, name: Back-to-grid voltage (P12), entity_category: diagnostic }
+    battery_redischarge_voltage: { id: qpiri_redischarge_v, name: Back-to-battery voltage (P13), entity_category: diagnostic }
+    battery_under_voltage: { id: qpiri_under_v, name: Low DC cut-off voltage (P29), entity_category: diagnostic }
+    battery_bulk_voltage: { id: qpiri_bulk_v, name: Bulk voltage (P26), entity_category: diagnostic }
+    battery_float_voltage: { id: qpiri_float_v, name: Float voltage (P27), entity_category: diagnostic }
+    current_max_ac_charging_current: { id: qpiri_max_ac_current, name: Max utility charge current (P11), entity_category: diagnostic }
+    current_max_charging_current: { id: qpiri_max_current, name: Max charge current (P02), entity_category: diagnostic }
+    battery_type: { id: qpiri_battery_type, internal: true }
+    output_source_priority: { id: qpiri_output_priority, internal: true }
+    charger_source_priority: { id: qpiri_charger_priority, internal: true }
+
+binary_sensor:
+  - platform: pipsolar
+    pipsolar_id: inverter0
+    # QPIGS status bits
+    load_status: { name: Load on }
+    charging_status: { name: Charging }
+    scc_charging_status: { name: Solar charging }
+    ac_charging_status: { name: AC charging }
+    switch_on: { name: Output switched on }
+    # QPIWS warnings/faults
+    warnings_present: { name: Warning present }
+    faults_present: { name: Fault present }
+    warning_line_fail: { name: Grid lost }
+    warning_battery_low_alarm: { name: Battery low }
+    warning_over_load: { name: Overload }
+    warning_over_temperature: { name: Over temperature }
+    # QFLAG options (read; the controls package can change them)
+    silence_buzzer_open_buzzer: { id: flag_buzzer, name: Buzzer (P18), entity_category: diagnostic }
+    backlight_on: { id: flag_backlight, name: Backlight (P20), entity_category: diagnostic }
+    overload_restart_function: { id: flag_overload_restart, name: Overload auto-restart (P06), entity_category: diagnostic }
+    over_temperature_restart_function: { id: flag_overtemp_restart, name: Over-temperature auto-restart (P07), entity_category: diagnostic }
+    power_saving: { id: flag_power_saving, name: Power saving (P08), entity_category: diagnostic }
+    overload_bypass_function: { id: flag_overload_bypass, name: Overload bypass (P23), entity_category: diagnostic }
+    lcd_escape_to_default: { id: flag_lcd_default, name: Return to default screen (P19), entity_category: diagnostic }
+    alarm_on_when_primary_source_interrupt: { id: flag_source_beep, name: Beep on source loss (P22), entity_category: diagnostic }
+    fault_code_record: { id: flag_fault_record, name: Record fault codes (P25), entity_category: diagnostic }
+
+text_sensor:
+  - platform: pipsolar
+    pipsolar_id: inverter0
+    device_mode:
+      name: Operating mode
+      filters:
+        - map:
+            - P -> Power on
+            - S -> Standby
+            - L -> Line
+            - B -> Battery
+            - F -> Fault
+            - H -> Power saving
+
+  # Priority codes on this firmware follow the LCD menu position
+  # (see docs/settings-map.md, P01 and P16).
+  - platform: template
+    name: Output source priority (P01)
+    update_interval: 10s
+    lambda: |-
+      float v = id(qpiri_output_priority).state;
+      if (std::isnan(v)) return {};
+      switch ((int) v) {
+        case 0: return std::string("Solar first");
+        case 1: return std::string("SBU");
+        case 2: return std::string("Utility first");
+        default: return std::string("Unknown");
+      }
+  - platform: template
+    name: Charger source priority (P16)
+    update_interval: 10s
+    lambda: |-
+      float v = id(qpiri_charger_priority).state;
+      if (std::isnan(v)) return {};
+      switch ((int) v) {
+        case 0: return std::string("Solar first");
+        case 1: return std::string("Solar and utility");
+        case 2: return std::string("Only solar");
+        default: return std::string("Unknown");
+      }
+  - platform: template
+    name: Battery type (P05)
+    update_interval: 60s
+    entity_category: diagnostic
+    lambda: |-
+      float v = id(qpiri_battery_type).state;
+      if (std::isnan(v)) return {};
+      switch ((int) v) {
+        case 0: return std::string("AGM");
+        case 1: return std::string("Flooded");
+        case 2: return std::string("User");
+        default: return std::string("Unknown");
+      }

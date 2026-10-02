@@ -156,6 +156,90 @@
       "protocol_id": {
         "name": "Protocol"
       },
+      "grid_power": {
+        "name": "Grid power"
+      },
+      "pv_energy_today": {
+        "name": "PV energy today"
+      },
+      "pv_energy_month": {
+        "name": "PV energy this month"
+      },
+      "pv_energy_year": {
+        "name": "PV energy this year"
+      },
+      "pv_energy_total": {
+        "name": "PV energy total"
+      },
+      "inverter_clock": {
+        "name": "Inverter clock"
+      },
+      "inverter_clock_offset": {
+        "name": "Inverter clock offset"
+      },
+      "ac_output_on_time": {
+        "name": "AC output on time"
+      },
+      "ac_output_off_time": {
+        "name": "AC output off time"
+      },
+      "ac_charger_start_time": {
+        "name": "AC charger start time"
+      },
+      "ac_charger_stop_time": {
+        "name": "AC charger stop time"
+      },
+      "inverter_temperature": {
+        "name": "Inverter temperature"
+      },
+      "transformer_temperature": {
+        "name": "Transformer temperature"
+      },
+      "pv_temperature": {
+        "name": "PV temperature"
+      },
+      "fan_1_speed": {
+        "name": "Fan 1 speed"
+      },
+      "fan_2_speed": {
+        "name": "Fan 2 speed"
+      },
+      "battery_low_alarm_voltage": {
+        "name": "Battery low alarm voltage"
+      },
+      "equalization_voltage": {
+        "name": "Equalization voltage"
+      },
+      "equalization_time": {
+        "name": "Equalization time"
+      },
+      "equalization_timeout": {
+        "name": "Equalization timeout"
+      },
+      "equalization_interval": {
+        "name": "Equalization interval"
+      },
+      "dual_output_cutoff_voltage": {
+        "name": "Second output cut-off voltage"
+      },
+      "dual_output_recover_voltage": {
+        "name": "Second output recover voltage"
+      },
+      "dual_output_recover_delay": {
+        "name": "Second output recover delay"
+      },
+      "bms_shutdown_soc": {
+        "name": "BMS shutdown SOC"
+      },
+      "bms_back_to_battery_soc": {
+        "name": "BMS back to battery SOC"
+      },
+      "grid_tie_current": {
+        "name": "Grid-tie current"
+      },
+      "firmware_date": {
+        "name": "Firmware date"
+      },
       "device_mode": {
         "name": "Mode",
         "state": {
@@ -171,9 +255,9 @@
       "output_source_priority": {
         "name": "Output source priority",
         "state": {
-          "solar_first": "Solar first (solar → utility)",
+          "solar_first": "Solar first (SUB, unverified code)",
           "sbu": "SBU (solar → battery → utility)",
-          "battery_first": "Battery first (unverified code)"
+          "utility_first": "Utility first (unverified code)"
         },
         "state_attributes": {
           "code": {
@@ -255,6 +339,27 @@
             "name": "Code"
           }
         }
+      },
+      "solar_supply_priority": {
+        "name": "Solar supply priority",
+        "state": {
+          "battery_first": "Battery first (BLU)",
+          "load_first": "Load first (LBU)"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "charge_stage": {
+        "name": "Charge stage",
+        "state": {
+          "idle": "Idle",
+          "bulk": "Bulk",
+          "absorb": "Absorption",
+          "float": "Float"
+        }
       }
     },
     "binary_sensor": {
@@ -278,6 +383,12 @@
       },
       "sbu_priority": {
         "name": "SBU priority"
+      },
+      "equalization_enabled": {
+        "name": "Equalization"
+      },
+      "equalization_active": {
+        "name": "Equalization active"
       },
       "fault": {
         "name": "Fault",
@@ -453,6 +564,13 @@
         "name": "Charger source priority",
         "state": {
           "only_solar": "Only solar"
+        }
+      },
+      "solar_supply_priority": {
+        "name": "Solar supply priority",
+        "state": {
+          "battery_first": "Battery first (BLU)",
+          "load_first": "Load first (LBU)"
         }
       }
     },

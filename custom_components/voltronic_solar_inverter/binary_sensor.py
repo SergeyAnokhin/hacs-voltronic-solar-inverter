@@ -38,6 +38,7 @@ class VoltronicFastBinaryDescription(BinarySensorEntityDescription):
 @dataclass(frozen=True, kw_only=True)
 class VoltronicSlowBinaryDescription(BinarySensorEntityDescription):
     value_fn: Callable[[SlowData], bool | None]
+    requires: str | None = None  # SlowData field that must have been read
 
 
 FAST_BINARY_SENSORS: tuple[VoltronicFastBinaryDescription, ...] = (
@@ -85,6 +86,20 @@ SLOW_BINARY_SENSORS: tuple[VoltronicSlowBinaryDescription, ...] = (
         key="sbu_priority",
         translation_key="sbu_priority",
         value_fn=lambda d: d.rated.output_source_priority == SBU_CODE,
+    ),
+    VoltronicSlowBinaryDescription(
+        key="equalization_enabled",
+        translation_key="equalization_enabled",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.equalization.enabled,
+        requires="equalization",
+    ),
+    VoltronicSlowBinaryDescription(
+        key="equalization_active",
+        translation_key="equalization_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.equalization.active,
+        requires="equalization",
     ),
     *(
         VoltronicSlowBinaryDescription(

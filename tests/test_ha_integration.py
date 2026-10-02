@@ -20,7 +20,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from conftest import FakeGateway, answered
+from conftest import FakeGateway, answered, plain_answered
 from custom_components.voltronic_solar_inverter import diagnostics
 from custom_components.voltronic_solar_inverter.const import (
     CONF_ENABLE_CONTROLS,
@@ -33,6 +33,21 @@ from custom_components.voltronic_solar_inverter.protocol.framing import crc_byte
 
 FULL = answered("snapshot_B_night_output_on.json")
 GRID_OFF = answered("snapshot_B_night_grid_off.json")
+Q_EXTRA = {
+    "Q1": answered("snapshot_S_night_output_off.json")["Q1"],  # charge stage 10 = idle
+    "QBEQI": answered("snapshot_p46-47_01-02_p43_LBU_q.json")["QBEQI"],
+}
+H_S = plain_answered("probe_h_commands_S.json")
+H_LBU = plain_answered("snapshot_p46-47_01-02_p43_LBU_h.json")
+PLAIN = {
+    "QPRTL": "HPVINV02",
+    "HIMSG1": H_S["HIMSG1"],
+    "HGEN": H_S["HGEN"],
+    "HTEMP": H_S["HTEMP"],
+    "HGRID": H_S["HGRID"],
+    "HEEP1": H_LBU["HEEP1"],  # P43 = LBU
+    "HEEP2": H_LBU["HEEP2"],  # P46/P47 01-02, P48/P49 23-00
+}
 SERIAL = FULL["QID"]
 PREFIX = "inverter_vmii_4000"
 
@@ -42,18 +57,36 @@ def reply(payload: str) -> bytes:
     return body + crc_bytes(body) + b"\r"
 
 
+def frame_name(frame: bytes) -> str:
+    """Command name of a sent frame (CRC frames lose 2 CRC bytes + CR, plain ones CR)."""
+    plain = frame[:-1].decode("ascii", "replace")
+    if plain in PLAIN or frame[:1] == b"H":
+        return plain
+    return frame[:-3].decode("ascii", "replace")
+
+
 class Inverter:
-    """Scripted inverter behind a FakeGateway. Unknown commands are silent."""
+    """Scripted inverter behind a FakeGateway. Unknown commands are silent.
+
+    Like the real unit, Q commands answer only with a valid CRC and the H
+    dialect (incl. QPRTL) only without CRC.
+    """
 
     def __init__(self) -> None:
-        self.table = dict(FULL)
+        self.table = {**FULL, **Q_EXTRA}
+        self.plain = dict(PLAIN)
         self.write_answer = "ACK"
         self.offline = False
         self.gateway = FakeGateway(self._respond)
 
     def _respond(self, frame: bytes):
-        command = frame[:-3].decode()
         if self.offline:
+            return None
+        plain = frame[:-1].decode("ascii", "replace")
+        if plain in self.plain:
+            return [b"(" + self.plain[plain].encode() + b"\r"]
+        command = frame[:-3].decode("ascii", "replace")
+        if encode_frame(command) != frame:
             return None
         if command.startswith("Q"):
             return [reply(self.table[command])] if command in self.table else None
@@ -61,7 +94,9 @@ class Inverter:
 
     @property
     def writes(self) -> list[str]:
-        return [f[:-3].decode() for f in self.gateway.sent if not f.startswith(b"Q")]
+        return [
+            frame_name(f) for f in self.gateway.sent if f[:1] not in (b"Q", b"H")
+        ]
 
     def client(self, host: str, port: int, **kwargs) -> InverterClient:
         self.gateway.refuse = self.offline
@@ -271,8 +306,10 @@ async def test_switch_sends_flag_command_and_refreshes(
     inverter.table["QFLAG"] = "EbjvxyDakuz"  # what the inverter reports after PDa
     await hass.services.async_call("switch", "turn_off", {"entity_id": entity_id}, blocking=True)
     assert inverter.writes == ["PDa"]
-    after = [f[:-3].decode() for f in inverter.gateway.sent[sent_before:]]
-    assert after == ["PDa", "QPIRI", "QFLAG", "QPIWS"]  # slow coordinator refreshed
+    after = [frame_name(f) for f in inverter.gateway.sent[sent_before:]]
+    assert after == [  # the write, then the whole slow coordinator refresh
+        "PDa", "QPIRI", "QFLAG", "QPIWS", "QBEQI", "Q1", "HEEP1", "HEEP2", "HGEN", "HTEMP",
+    ]
     assert hass.states.get(entity_id).state == STATE_OFF
 
 
@@ -325,7 +362,7 @@ async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:
         "number", "set_value",
         {"entity_id": f"number.{PREFIX}_back_to_utility_voltage", "value": 23.5}, blocking=True,
     )
-    assert inverter.writes == ["MCHGC040", "MUCHGC010", "PBCV23.5"]
+    assert inverter.writes == ["MNCHGC040", "MUCHGC010", "PBCV23.5"]
 
     # Within min/max but not an allowed value / step: rejected locally, nothing sent.
     for entity, value in (("max_utility_charging_current", 4), ("back_to_utility_voltage", 22.2)):
@@ -334,7 +371,71 @@ async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:
                 "number", "set_value",
                 {"entity_id": f"number.{PREFIX}_{entity}", "value": value}, blocking=True,
             )
-    assert inverter.writes == ["MCHGC040", "MUCHGC010", "PBCV23.5"]
+    assert inverter.writes == ["MNCHGC040", "MUCHGC010", "PBCV23.5"]
+
+
+# --- H dialect and optional queries ----------------------------------------------
+
+
+async def test_h_dialect_entities(hass: HomeAssistant, inverter: Inverter) -> None:
+    entry = await setup(hass)
+    state = hass.states.get
+    assert state(f"sensor.{PREFIX}_pv_energy_today").state == "1.765"
+    assert state(f"sensor.{PREFIX}_pv_energy_total").state == "8.5"
+    assert state(f"sensor.{PREFIX}_pv_energy_total").attributes["state_class"] == "total_increasing"
+    assert state(f"sensor.{PREFIX}_ac_output_on_time").state == "23:00"
+    assert state(f"sensor.{PREFIX}_ac_output_off_time").state == "00:00"
+    assert state(f"sensor.{PREFIX}_ac_charger_start_time").state == "01:00"
+    assert state(f"sensor.{PREFIX}_ac_charger_stop_time").state == "02:00"
+    assert state(f"sensor.{PREFIX}_solar_supply_priority").state == "load_first"
+    assert state(f"sensor.{PREFIX}_charge_stage").state == "idle"
+    assert state(f"sensor.{PREFIX}_inverter_temperature").state == "28"
+    assert state(f"sensor.{PREFIX}_transformer_temperature").state == "32"
+    assert state(f"sensor.{PREFIX}_grid_power").state == "0"
+    assert state(f"sensor.{PREFIX}_battery_low_alarm_voltage").state == "22.0"
+    assert state(f"sensor.{PREFIX}_equalization_voltage").state == "29.2"
+    assert state(f"binary_sensor.{PREFIX}_equalization").state == STATE_OFF
+    # 21:01 inverter local time; the test time zone is US/Pacific, states are UTC
+    assert state(f"sensor.{PREFIX}_inverter_clock").state == "2026-10-03T04:01:00+00:00"
+    assert state(f"sensor.{PREFIX}_inverter_clock_offset").state not in (None, STATE_UNAVAILABLE)
+    assert entry.runtime_data.identity.h_protocol == "HPVINV02"
+    # H queries go out without CRC.
+    assert b"HGEN\r" in inverter.gateway.sent
+    assert inverter.writes == []
+
+
+async def test_failed_h_query_only_affects_its_entities(
+    hass: HomeAssistant, inverter: Inverter
+) -> None:
+    entry = await setup(hass)
+    del inverter.plain["HGEN"]  # e.g. the answer got lost
+    await entry.runtime_data.slow.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(f"sensor.{PREFIX}_pv_energy_today").state == STATE_UNAVAILABLE
+    assert hass.states.get(f"sensor.{PREFIX}_ac_output_on_time").state == "23:00"
+    assert hass.states.get(f"sensor.{PREFIX}_battery_type").state == "user_defined"
+
+
+async def test_inverter_without_h_dialect(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.plain.clear()
+    await setup(hass)
+    assert hass.states.get(f"sensor.{PREFIX}_pv_energy_today") is None
+    assert hass.states.get(f"sensor.{PREFIX}_grid_power") is None
+    assert hass.states.get(f"sensor.{PREFIX}_charge_stage").state == "idle"  # Q1 still works
+    sent = [frame_name(f) for f in inverter.gateway.sent]
+    assert "HGEN" not in sent and "HEEP2" not in sent  # not polled at all
+
+
+async def test_select_solar_supply_priority(hass: HomeAssistant, inverter: Inverter) -> None:
+    await setup(hass, controls=True)
+    entity_id = f"select.{PREFIX}_solar_supply_priority"
+    select = hass.states.get(entity_id)
+    assert select.state == "load_first"
+    assert select.attributes["options"] == ["battery_first", "load_first"]
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": entity_id, "option": "battery_first"}, blocking=True
+    )
+    assert inverter.writes == ["PVENGUSE00"]
 
 
 # --- diagnostics -----------------------------------------------------------------------
@@ -348,3 +449,4 @@ async def test_diagnostics_redacts_serial(hass: HomeAssistant, inverter: Inverte
     assert result["identity"]["model"] == "VMII-4000"
     assert result["raw_responses"]["QPIGS"] == FULL["QPIGS"]
     assert result["slow"]["data"]["rated"]["output_source_priority"] == 1
+    assert result["raw_responses"]["HEEP2"] == H_LBU["HEEP2"]

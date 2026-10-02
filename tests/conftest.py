@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -18,9 +19,29 @@ ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION_DIR = ROOT / "custom_components" / "voltronic_solar_inverter"
 FIXTURES = Path(__file__).parent / "fixtures"
 
-for path in (INTEGRATION_DIR, ROOT):  # ROOT: lets Home Assistant import custom_components
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+if str(ROOT) not in sys.path:  # lets Home Assistant import custom_components
+    sys.path.insert(0, str(ROOT))
+
+
+def _load_protocol_package() -> None:
+    """Import the integration's protocol package as top-level ``protocol``.
+
+    The integration folder itself is not put on sys.path: its select.py would
+    shadow the standard-library ``select`` module.
+    """
+    if "protocol" in sys.modules:
+        return
+    spec = importlib.util.spec_from_file_location(
+        "protocol",
+        INTEGRATION_DIR / "protocol" / "__init__.py",
+        submodule_search_locations=[str(INTEGRATION_DIR / "protocol")],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["protocol"] = module
+    spec.loader.exec_module(module)
+
+
+_load_protocol_package()
 
 
 def load_fixture(name: str, strategy: str = "stream") -> dict[str, dict]:
@@ -35,6 +56,20 @@ def answered(name: str, strategy: str = "stream") -> dict[str, str]:
         for cmd, entry in load_fixture(name, strategy).items()
         if entry.get("crc_ok")
     }
+
+
+def plain_answered(name: str, strategy: str = "stream") -> dict[str, str]:
+    """Return {command: payload} for CRC-less (H dialect) answers, decoded from raw_hex.
+
+    The probe's ``text`` field strips two characters as if they were a CRC, so
+    the payload is taken from the raw frame instead.
+    """
+    result = {}
+    for cmd, entry in load_fixture(name, strategy).items():
+        raw = bytes.fromhex(entry.get("raw_hex") or "")
+        if raw.startswith(b"(") and raw.endswith(b"\r"):
+            result[cmd] = raw[1:-1].decode("ascii")
+    return result
 
 
 def all_recorded_frames() -> list[tuple[str, bytes, str]]:

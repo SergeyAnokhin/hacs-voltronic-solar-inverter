@@ -5,7 +5,7 @@ Behavioral guidelines for AI agents working in this repository (a Home Assistant
 ## 0. Hard Safety Rule: the live inverter is READ-ONLY for the agent
 
 - **Never send any command that changes inverter state or settings to the real device.** This includes all setter commands (`PO…`, `PF`, `PCP`, `PGR`, `PBT`, `POP`, `PSDV`, `MUCHGC`, `MCHGC`, `PE…`/`PD…`, `PBCV`, `PBDV`, `PCVV`, `PBFT`, `DAT`, `F50`/`F60`, reset, power on/off, etc.) and anything not on the allow-list below.
-- Allowed on the live device: **query commands only** (names starting with `Q`, e.g. `QPIGS`, `QPIRI`, `QPIWS`, `QMOD`, `QFLAG`, `QID`, `QVFW`). Probing for *new* `Q…` commands is allowed only one at a time, and only if the user asked for protocol research. The gateway serves one client: query only as often as needed.
+- Allowed on the live device: **query commands only**: names starting with `Q` (with CRC, e.g. `QPIGS`, `QPIRI`, `QPIWS`, `QMOD`, `QFLAG`, `QID`, `QVFW`) and the owner-approved read-only Solar Plug **H** queries sent without CRC (`QPRTL HSTS HGRID HOP HBAT HPV HPVB HTEMP HGEN HIMSG1 HBMS1 HBMS2 HBMS3 HEEP1 HEEP2`; exact allow-lists in `protocol/commands.py` `PLAIN_QUERIES` and `tools/probe_inverter.py`). Probing for *new* `Q…` commands is allowed only one at a time, and only if the user asked for protocol research. The gateway serves one client: query only as often as needed.
 - **Write code exists** (owner's decision, 2026-10-02): setting commands are built and validated in [`protocol/commands.py`](custom_components/voltronic_solar_inverter/protocol/commands.py) and exposed by switch/select/number entities that are **created only when the owner turns on the "Enable control entities" option (default off)**. The agent may change this code and its tests when asked, but tests use a fake transport only (`tests/conftest.py` `FakeGateway`); a write command is never sent to the real inverter by the agent. **Only the owner tests writes on the real device.**
 - Do not add new write commands, or publish setting values marked unverified, without the owner's explicit request in chat.
 - Never run the live inverter code in a loop/flood; keep a pause between commands (the integration uses 0.1 s on one persistent connection; the prototype uses 0.3 s).
@@ -94,7 +94,7 @@ Rules:
 - Add tests for non-trivial logic that is easy to regress — especially protocol parsing (CRC, response splitting, field mapping, status-bit decoding). Test parsers against **recorded sample responses**, never against the live inverter.
 - Do not add tests for trivial code.
 - A task is not complete while required tests are failing.
-- Test suite: `pytest` (see `README.md` "Development" for how to run it). Protocol tests (`tests/test_framing.py`, `test_parsers.py`, `test_commands.py`, `test_client.py`) need only `pytest`; `tests/test_ha_integration.py` needs `pytest-homeassistant-custom-component` and is skipped without it.
+- Test suite: `pytest` (see `README.md` "Development" for how to run it). Protocol tests (`tests/test_framing.py`, `test_parsers.py`, `test_h_parsers.py`, `test_commands.py`, `test_client.py`) need only `pytest`; `tests/test_ha_integration.py` needs `pytest-homeassistant-custom-component` and is skipped without it.
 
 ### Manual / Visual Verification
 

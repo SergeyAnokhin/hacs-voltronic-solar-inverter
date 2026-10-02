@@ -15,6 +15,7 @@ from typing import Final
 
 from .errors import InvalidCommandError
 from .framing import encode_frame
+from .h_parsers import SOLAR_SUPPLY_PRIORITIES_VERIFIED
 from .parsers import (
     CHARGER_SOURCE_PRIORITIES_VERIFIED,
     FLAGS,
@@ -22,6 +23,16 @@ from .parsers import (
 )
 
 QUERY_RE: Final = re.compile(r"Q[A-Z0-9]{1,14}")
+
+# Read-only queries sent WITHOUT CRC (Solar Plug H dialect), exactly as approved
+# by the owner on 2026-10-02. Anything else is refused by the client.
+PLAIN_QUERIES: Final = frozenset(
+    {
+        "QPRTL",
+        "HSTS", "HGRID", "HOP", "HBAT", "HPV", "HPVB", "HTEMP", "HGEN", "HIMSG1",
+        "HBMS1", "HBMS2", "HBMS3", "HEEP1", "HEEP2",
+    }
+)
 
 FLAG_LETTERS: Final = {key: letter for letter, key in FLAGS.items()}
 
@@ -47,30 +58,41 @@ def set_flag(flag: str, enabled: bool) -> WriteCommand:
 
 def set_output_source_priority(code: int) -> WriteCommand:
     """POP<NN>, using this firmware's menu-position codes (only verified codes allowed)."""
-    if code not in OUTPUT_SOURCE_PRIORITIES_VERIFIED:
+    if isinstance(code, bool) or code not in OUTPUT_SOURCE_PRIORITIES_VERIFIED:
         raise InvalidCommandError(f"output source priority code {code!r} is not verified")
     return WriteCommand(f"POP{code:02d}")
 
 
 def set_charger_source_priority(code: int) -> WriteCommand:
     """PCP<NN>, using this firmware's menu-position codes (only verified codes allowed)."""
-    if code not in CHARGER_SOURCE_PRIORITIES_VERIFIED:
+    if isinstance(code, bool) or code not in CHARGER_SOURCE_PRIORITIES_VERIFIED:
         raise InvalidCommandError(f"charger source priority code {code!r} is not verified")
     return WriteCommand(f"PCP{code:02d}")
+
+
+def set_solar_supply_priority(code: int) -> WriteCommand:
+    """PVENGUSE<NN> (P43): 00 = battery first (BLU), 01 = load first (LBU)."""
+    if isinstance(code, bool) or code not in SOLAR_SUPPLY_PRIORITIES_VERIFIED:
+        raise InvalidCommandError(f"solar supply priority code {code!r} is not verified")
+    return WriteCommand(f"PVENGUSE{code:02d}")
 
 
 def _check_current(amps: int, options: Iterable[int], name: str) -> None:
     allowed = tuple(options)
     if isinstance(amps, bool) or not isinstance(amps, int) or amps not in allowed:
         raise InvalidCommandError(f"{name} {amps!r} A is not one of {allowed}")
-    if not 0 < amps < 100:
-        raise InvalidCommandError(f"{name} {amps!r} A is outside 1..99 A")
+    if not 0 < amps < 1000:
+        raise InvalidCommandError(f"{name} {amps!r} A is outside 1..999 A")
 
 
 def set_max_charging_current(amps: int, options: Iterable[int]) -> WriteCommand:
-    """MCHGC<mnn>: m = 0 (single unit), nn = amps; amps must come from QMCHGCR."""
+    """MNCHGC<nnn>; amps must come from QMCHGCR.
+
+    MNCHGC (not the PI30 MCHGC<mnn>) is the form ACKed and read back on a sibling
+    VMII-6200 in solarplug-esphome.
+    """
     _check_current(amps, options, "max charging current")
-    return WriteCommand(f"MCHGC0{amps:02d}")
+    return WriteCommand(f"MNCHGC{amps:03d}")
 
 
 def set_max_utility_charging_current(amps: int, options: Iterable[int]) -> WriteCommand:

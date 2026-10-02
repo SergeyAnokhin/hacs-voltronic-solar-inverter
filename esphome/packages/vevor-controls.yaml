@@ -1,0 +1,216 @@
+# Setting controls for vevor-inverter.yaml (opt-in package).
+#
+# Every write goes through pipsolar's command queue (PI30 framing with CRC);
+# the inverter answers (ACK or (NAK, visible in the log at DEBUG level. The
+# entities show the value read back from QPIRI/QFLAG, so a rejected write
+# simply snaps back after the next poll.
+#
+# NONE of these commands has been verified on the Vevor GD5548JMH (fw 00040.09)
+# yet. Test them one at a time and check the LCD. Sources and caveats per
+# setting: docs/settings-map.md. Values are for a 24 V system.
+#
+# Not here on purpose: battery type (may overwrite P26/P27/P29 presets),
+# float voltage (range undocumented), AC output schedule P46-P49 (no known
+# command), grid feed-in P44.
+
+select:
+  - platform: template
+    name: Output source priority (P01)
+    id: output_priority_select
+    icon: mdi:transmission-tower
+    options: ["Solar first", "SBU", "Utility first"]
+    update_interval: 5s
+    lambda: |-
+      float v = id(qpiri_output_priority).state;
+      if (std::isnan(v) || v < 0 || v > 2) return {};
+      static const char *const names[] = {"Solar first", "SBU", "Utility first"};
+      return std::string(names[(int) v]);
+    set_action:
+      - lambda: |-
+          auto idx = id(output_priority_select).index_of(x);
+          if (!idx.has_value()) return;
+          char cmd[8];
+          snprintf(cmd, sizeof(cmd), "POP%02u", (unsigned) idx.value());
+          id(inverter0).queue_command(cmd);
+
+  - platform: template
+    name: Charger source priority (P16)
+    id: charger_priority_select
+    icon: mdi:battery-charging
+    options: ["Solar first", "Solar and utility", "Only solar"]
+    update_interval: 5s
+    lambda: |-
+      float v = id(qpiri_charger_priority).state;
+      if (std::isnan(v) || v < 0 || v > 2) return {};
+      static const char *const names[] = {"Solar first", "Solar and utility", "Only solar"};
+      return std::string(names[(int) v]);
+    set_action:
+      - lambda: |-
+          auto idx = id(charger_priority_select).index_of(x);
+          if (!idx.has_value()) return;
+          char cmd[8];
+          snprintf(cmd, sizeof(cmd), "PCP%02u", (unsigned) idx.value());
+          id(inverter0).queue_command(cmd);
+
+  # Allowed values = QMUCHGCR reply on this unit.
+  - platform: template
+    name: Max utility charge current (P11)
+    id: max_ac_current_select
+    icon: mdi:current-ac
+    options: ["2", "10", "20", "30", "40", "50", "60"]
+    update_interval: 5s
+    lambda: |-
+      float v = id(qpiri_max_ac_current).state;
+      if (std::isnan(v)) return {};
+      std::string s = to_string((int) v);
+      if (!id(max_ac_current_select).has_option(s)) return {};
+      return s;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "MUCHGC%03d", atoi(x.c_str()));
+          id(inverter0).queue_command(cmd);
+
+  # Allowed values = QMCHGCR reply on this unit. MNCHGC (not PI30 MCHGC) is
+  # the form ACKed and read back on a sibling VMII unit.
+  - platform: template
+    name: Max charge current (P02)
+    id: max_current_select
+    icon: mdi:battery-charging-high
+    options: ["10", "20", "30", "40", "50", "60", "70", "80"]
+    update_interval: 5s
+    lambda: |-
+      float v = id(qpiri_max_current).state;
+      if (std::isnan(v)) return {};
+      std::string s = to_string((int) v);
+      if (!id(max_current_select).has_option(s)) return {};
+      return s;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "MNCHGC%03d", atoi(x.c_str()));
+          id(inverter0).queue_command(cmd);
+
+# Voltage ranges: 24 V column of the Vevor manual (same as
+# protocol/commands.py VOLTAGE_SETTINGS_24V in the HA integration).
+number:
+  - platform: template
+    name: Back-to-grid voltage (P12)
+    icon: mdi:battery-arrow-down
+    unit_of_measurement: V
+    device_class: voltage
+    min_value: 22.0
+    max_value: 25.5
+    step: 0.5
+    update_interval: 5s
+    lambda: return id(qpiri_recharge_v).state;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "PBCV%04.1f", x);
+          id(inverter0).queue_command(cmd);
+
+  - platform: template
+    name: Back-to-battery voltage (P13)
+    icon: mdi:battery-arrow-up
+    unit_of_measurement: V
+    device_class: voltage
+    min_value: 24.0
+    max_value: 29.0
+    step: 0.5
+    update_interval: 5s
+    lambda: return id(qpiri_redischarge_v).state;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "PBDV%04.1f", x);
+          id(inverter0).queue_command(cmd);
+
+  - platform: template
+    name: Low DC cut-off voltage (P29)
+    icon: mdi:battery-off
+    unit_of_measurement: V
+    device_class: voltage
+    min_value: 20.0
+    max_value: 26.0
+    step: 0.1
+    update_interval: 5s
+    lambda: return id(qpiri_under_v).state;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "PSDV%04.1f", x);
+          id(inverter0).queue_command(cmd);
+
+  - platform: template
+    name: Bulk voltage (P26)
+    icon: mdi:battery-charging-100
+    unit_of_measurement: V
+    device_class: voltage
+    min_value: 24.0
+    max_value: 30.0
+    step: 0.1
+    update_interval: 5s
+    lambda: return id(qpiri_bulk_v).state;
+    set_action:
+      - lambda: |-
+          char cmd[12];
+          snprintf(cmd, sizeof(cmd), "PCVV%04.1f", x);
+          id(inverter0).queue_command(cmd);
+
+# QFLAG options: PE<letter> enables, PD<letter> disables.
+switch:
+  - platform: template
+    name: Buzzer (P18)
+    icon: mdi:volume-high
+    lambda: return id(flag_buzzer).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEa");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDa");']
+  - platform: template
+    name: Backlight (P20)
+    icon: mdi:brightness-6
+    lambda: return id(flag_backlight).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEx");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDx");']
+  - platform: template
+    name: Overload auto-restart (P06)
+    icon: mdi:restart
+    lambda: return id(flag_overload_restart).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEu");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDu");']
+  - platform: template
+    name: Over-temperature auto-restart (P07)
+    icon: mdi:thermometer-alert
+    lambda: return id(flag_overtemp_restart).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEv");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDv");']
+  - platform: template
+    name: Power saving (P08)
+    icon: mdi:leaf
+    lambda: return id(flag_power_saving).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEj");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDj");']
+  - platform: template
+    name: Overload bypass (P23)
+    icon: mdi:call-split
+    lambda: return id(flag_overload_bypass).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEb");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDb");']
+  - platform: template
+    name: Return to default screen (P19)
+    icon: mdi:monitor
+    lambda: return id(flag_lcd_default).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEk");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDk");']
+  - platform: template
+    name: Beep on source loss (P22)
+    icon: mdi:bell-alert
+    lambda: return id(flag_source_beep).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEy");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDy");']
+  - platform: template
+    name: Record fault codes (P25)
+    icon: mdi:history
+    lambda: return id(flag_fault_record).state;
+    turn_on_action: [lambda: 'id(inverter0).queue_command("PEz");']
+    turn_off_action: [lambda: 'id(inverter0).queue_command("PDz");']

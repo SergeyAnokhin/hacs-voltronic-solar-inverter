@@ -162,8 +162,9 @@ def parse_qmod(payload: str) -> str:
 # --- QPIRI: ratings and current settings ---------------------------------------
 
 # Codes on this firmware follow the LCD menu position, NOT the generic Voltronic
-# numbering (owner-confirmed values are listed in *_VERIFIED).
-OUTPUT_SOURCE_PRIORITIES: Final = {0: "solar_first", 1: "sbu", 2: "battery_first"}
+# numbering (owner-confirmed values are listed in *_VERIFIED). Code 2 of the
+# output priority is "utility first" per the solarplug-esphome POP mapping.
+OUTPUT_SOURCE_PRIORITIES: Final = {0: "solar_first", 1: "sbu", 2: "utility_first"}
 OUTPUT_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({1})
 CHARGER_SOURCE_PRIORITIES: Final = {0: "solar_first", 1: "solar_and_utility", 2: "only_solar"}
 CHARGER_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({2})
@@ -383,3 +384,49 @@ class DeviceIdentity:
     firmware_version_2: str | None = None  # QVFW2 (SCC CPU)
     charging_current_options: tuple[int, ...] = ()  # QMCHGCR
     utility_charging_current_options: tuple[int, ...] = ()  # QMUCHGCR
+    h_protocol: str | None = None  # QPRTL without CRC, e.g. "HPVINV02"; None = no H dialect
+    firmware_date: str | None = None  # HIMSG1, ISO date
+
+
+# --- Q1: extra status (only the verified charge stage is used) -------------------
+
+# Q1[17]: 10 idle and 11 bulk verified; 12 absorb and 13 float are generic.
+CHARGE_STAGES: Final = {10: "idle", 11: "bulk", 12: "absorb", 13: "float"}
+
+
+def parse_q1_charge_stage(payload: str) -> str | None:
+    """Return the charge stage key from Q1[17]; None for an unknown code."""
+    fields = _fields(payload, "Q1", 18)
+    return CHARGE_STAGES.get(_int(fields[17], "Q1"))
+
+
+# --- QBEQI: battery equalization ---------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Equalization:
+    """QBEQI response (spec layout)."""
+
+    enabled: bool  # 0, P30
+    time: int  # 1, min, P33
+    interval: int  # 2, days, P35
+    max_current: int  # 3, A (follows P02)
+    voltage: float  # 5, V, P31
+    timeout: int  # 7, min, P34
+    active: bool  # 8
+    elapsed: int  # 9, h
+
+
+def parse_qbeqi(payload: str) -> Equalization:
+    cmd = "QBEQI"
+    f = _fields(payload, cmd, 10)
+    return Equalization(
+        enabled=_int(f[0], cmd) == 1,
+        time=_int(f[1], cmd),
+        interval=_int(f[2], cmd),
+        max_current=_int(f[3], cmd),
+        voltage=_float(f[5], cmd),
+        timeout=_int(f[7], cmd),
+        active=_int(f[8], cmd) == 1,
+        elapsed=_int(f[9], cmd),
+    )

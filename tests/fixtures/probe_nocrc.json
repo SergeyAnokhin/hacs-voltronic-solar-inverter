@@ -1,0 +1,91 @@
+{
+  "host": "192.168.1.47",
+  "note": "Requests sent WITHOUT CRC (plain ASCII + CR, Solar Plug style), one per connection, timeout 1-2 s, mode L, PV off. QPRTL with CRC was silent.",
+  "stream": {
+    "QPRTL": {
+      "raw_hex": "28485056494e5630320d",
+      "text": "HPVINV",
+      "crc_ok": false,
+      "seconds": 0.203,
+      "error": null
+    },
+    "QPIGS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QET": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QEY2026": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QDOP": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QOPPT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QCHPT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QBMS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPIGS2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QGMN": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QVFW3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    }
+  },
+  "taken_at": "2026-10-02 21:03:16"
+}

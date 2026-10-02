@@ -1,24 +1,85 @@
 {
   "entity": {
     "sensor": {
-      "device_mode": { "default": "mdi:state-machine" },
-      "load_percent": { "default": "mdi:gauge" },
-      "battery_capacity_estimate": { "default": "mdi:battery-unknown" },
-      "pv_charging_power": { "default": "mdi:solar-power" },
-      "pv_input_voltage": { "default": "mdi:solar-panel" },
-      "pv_input_current": { "default": "mdi:solar-panel" },
-      "output_source_priority": { "default": "mdi:transmission-tower-export" },
-      "charger_source_priority": { "default": "mdi:battery-charging" },
-      "battery_type": { "default": "mdi:car-battery" },
-      "serial_number": { "default": "mdi:identifier" },
-      "firmware_version": { "default": "mdi:chip" }
+      "device_mode": {
+        "default": "mdi:state-machine"
+      },
+      "load_percent": {
+        "default": "mdi:gauge"
+      },
+      "battery_capacity_estimate": {
+        "default": "mdi:battery-unknown"
+      },
+      "pv_charging_power": {
+        "default": "mdi:solar-power"
+      },
+      "pv_input_voltage": {
+        "default": "mdi:solar-panel"
+      },
+      "pv_input_current": {
+        "default": "mdi:solar-panel"
+      },
+      "output_source_priority": {
+        "default": "mdi:transmission-tower-export"
+      },
+      "charger_source_priority": {
+        "default": "mdi:battery-charging"
+      },
+      "battery_type": {
+        "default": "mdi:car-battery"
+      },
+      "serial_number": {
+        "default": "mdi:identifier"
+      },
+      "firmware_version": {
+        "default": "mdi:chip"
+      },
+      "ac_output_on_time": {
+        "default": "mdi:clock-start"
+      },
+      "ac_output_off_time": {
+        "default": "mdi:clock-end"
+      },
+      "ac_charger_start_time": {
+        "default": "mdi:clock-start"
+      },
+      "ac_charger_stop_time": {
+        "default": "mdi:clock-end"
+      },
+      "inverter_clock": {
+        "default": "mdi:clock-outline"
+      },
+      "inverter_clock_offset": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "solar_supply_priority": {
+        "default": "mdi:solar-power-variant"
+      },
+      "charge_stage": {
+        "default": "mdi:battery-charging-medium"
+      },
+      "fan_1_speed": {
+        "default": "mdi:fan"
+      },
+      "fan_2_speed": {
+        "default": "mdi:fan"
+      }
     },
     "binary_sensor": {
-      "sbu_priority": { "default": "mdi:solar-power-variant" }
+      "sbu_priority": {
+        "default": "mdi:solar-power-variant"
+      }
     },
     "select": {
-      "output_source_priority": { "default": "mdi:transmission-tower-export" },
-      "charger_source_priority": { "default": "mdi:battery-charging" }
+      "output_source_priority": {
+        "default": "mdi:transmission-tower-export"
+      },
+      "charger_source_priority": {
+        "default": "mdi:battery-charging"
+      },
+      "solar_supply_priority": {
+        "default": "mdi:solar-power-variant"
+      }
     }
   }
 }

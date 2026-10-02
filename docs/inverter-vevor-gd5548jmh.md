@@ -32,7 +32,10 @@ Protocol `PI30`, model name `VMII-4000`, firmware `VERFW:00040.09`, 24 V / 4000 
 - The UPS-style `QMD` query reports the internal model string `INVERTEX3K`, 3000 VA, 2 × 12 V; the VA figure is wrong for this unit.
 - **P25 "Record fault code" is disabled** (`QFLAG` `z`). The fault-history queries (`QPIHF`/`QPICF`) answer `NAK`, possibly for that reason.
 - A sibling model, GD3024EMH (24 V, `VMII-3000`, fw 00010.13), behaves the same over RS232 ([diysolarforum thread](https://diysolarforum.com/threads/figuring-out-gd3024emh-inverter-comms.122039/)).
-- **Not readable over RS232:** clock, PV/load energy counters (LCD only), schedules P46–P49, dual-output state (P57–64), BMS data.
+- **Two RS232 dialects:** PI30 (`Q…` + CRC) and the CRC-less Solar Plug / Solar of Things "H" dialect used by the vendor Wi-Fi dongle (device type `HPVINV02`, firmware date 2026-01-19). The H dialect gives the **inverter clock and PV energy counters** (`HGEN`), the **AC output schedule P48/P49** (`HEEP2[12]`, verified), dual-output and BMS-SOC settings, and four temperatures plus fan speeds. See [inverter-protocol.md](inverter-protocol.md#solar-plug-h-protocol-no-crc).
+- **Inverter clock runs ~10 min slow** (2026-10-02). Schedules follow this clock: the 21:00 output-off happened at ~21:10 wall time.
+- With the output switched off by the schedule (mode S), grid charging stops as well; in mode L the output stays on (fed from the grid) until the scheduled hour.
+- **Not readable at all:** load-energy counters, a true SOC (no BMS), fault history (P25 off).
 
 ## 2. Operating modes (what the `QMOD` letter means)
 

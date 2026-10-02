@@ -1,4 +1,4 @@
-"""Selects for output (POP) and charger (PCP) source priority.
+"""Selects for output (POP), charger (PCP) and solar supply (PVENGUSE, P43) priority.
 
 Only owner-verified codes are offered (see *_VERIFIED in protocol/parsers.py);
 only set up when controls are enabled.
@@ -15,8 +15,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import VoltronicConfigEntry
-from .entity import VoltronicControlEntity
-from .protocol import RatedInfo, WriteCommand, commands
+from .coordinator import SlowData
+from .entity import VoltronicControlEntity, is_supported
+from .protocol import WriteCommand, commands
+from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, SOLAR_SUPPLY_PRIORITIES_VERIFIED
 from .protocol.parsers import (
     CHARGER_SOURCE_PRIORITIES,
     CHARGER_SOURCE_PRIORITIES_VERIFIED,
@@ -30,8 +32,9 @@ PARALLEL_UPDATES = 1
 @dataclass(frozen=True, kw_only=True)
 class VoltronicSelectDescription(SelectEntityDescription):
     codes: dict[int, str]  # verified code -> option
-    code_fn: Callable[[RatedInfo], int]
+    code_fn: Callable[[SlowData], int]
     command_fn: Callable[[int], WriteCommand]
+    requires: str | None = None  # SlowData field that must have been read
 
 
 SELECTS = (
@@ -40,7 +43,7 @@ SELECTS = (
         translation_key="output_source_priority",
         entity_category=EntityCategory.CONFIG,
         codes={c: OUTPUT_SOURCE_PRIORITIES[c] for c in sorted(OUTPUT_SOURCE_PRIORITIES_VERIFIED)},
-        code_fn=lambda r: r.output_source_priority,
+        code_fn=lambda d: d.rated.output_source_priority,
         command_fn=commands.set_output_source_priority,
     ),
     VoltronicSelectDescription(
@@ -48,8 +51,18 @@ SELECTS = (
         translation_key="charger_source_priority",
         entity_category=EntityCategory.CONFIG,
         codes={c: CHARGER_SOURCE_PRIORITIES[c] for c in sorted(CHARGER_SOURCE_PRIORITIES_VERIFIED)},
-        code_fn=lambda r: r.charger_source_priority,
+        code_fn=lambda d: d.rated.charger_source_priority,
         command_fn=commands.set_charger_source_priority,
+    ),
+    VoltronicSelectDescription(
+        # P43, read from HEEP1 (H dialect), written with PVENGUSE<NN>
+        key="select_solar_supply_priority",
+        translation_key="solar_supply_priority",
+        entity_category=EntityCategory.CONFIG,
+        codes={c: SOLAR_SUPPLY_PRIORITIES[c] for c in sorted(SOLAR_SUPPLY_PRIORITIES_VERIFIED)},
+        code_fn=lambda d: d.heep1.solar_supply_priority,
+        command_fn=commands.set_solar_supply_priority,
+        requires="heep1",
     ),
 )
 
@@ -59,8 +72,10 @@ async def async_setup_entry(
     entry: VoltronicConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    slow = entry.runtime_data.slow
-    async_add_entities(VoltronicPrioritySelect(slow, d) for d in SELECTS)
+    data = entry.runtime_data
+    async_add_entities(
+        VoltronicPrioritySelect(data.slow, d) for d in SELECTS if is_supported(d, data.identity)
+    )
 
 
 class VoltronicPrioritySelect(VoltronicControlEntity, SelectEntity):
@@ -73,7 +88,7 @@ class VoltronicPrioritySelect(VoltronicControlEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """None when the inverter currently uses a code that is not offered."""
-        code = self.entity_description.code_fn(self.coordinator.data.rated)
+        code = self.entity_description.code_fn(self.coordinator.data)
         return self.entity_description.codes.get(code)
 
     async def async_select_option(self, option: str) -> None:
