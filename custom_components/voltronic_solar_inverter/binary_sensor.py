@@ -15,9 +15,9 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DISABLED_KEYS
+from .const import ATTR_UPDATE_GROUP, DISABLED_KEYS, UPDATE_GROUP_SLOW
 from .coordinator import FastData, SlowData, VoltronicConfigEntry, VoltronicFastCoordinator
-from .entity import VoltronicEntity
+from .entity import VoltronicEntity, remove_entities
 from .protocol.parsers import FLAGS, OUTPUT_ACTIVE_MODES, WARNING_BITS
 
 PARALLEL_UPDATES = 0
@@ -115,16 +115,10 @@ SLOW_BINARY_SENSORS: tuple[VoltronicSlowBinaryDescription, ...] = (
         )
         for index, (key, _kind) in WARNING_BITS.items()
     ),
-    *(
-        VoltronicSlowBinaryDescription(
-            key=f"flag_{flag}",
-            translation_key=f"flag_{flag}",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda d, flag=flag: d.flags.get(flag),
-        )
-        for flag in FLAGS.values()
-    ),
 )
+
+# 0.4.0: the QFLAG read-only binary sensors (flag_<name>) were dropped, the switches show the same.
+REMOVED_KEYS = tuple(f"flag_{flag}" for flag in FLAGS.values())
 
 FAULT_DESCRIPTION = BinarySensorEntityDescription(
     key="fault", translation_key="fault", device_class=BinarySensorDeviceClass.PROBLEM
@@ -140,6 +134,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     data = entry.runtime_data
+    remove_entities(hass, data.identity, "binary_sensor", REMOVED_KEYS)
     entities: list[BinarySensorEntity] = [
         VoltronicFastBinarySensor(data.fast, d) for d in FAST_BINARY_SENSORS
     ]
@@ -161,6 +156,10 @@ class VoltronicFastBinarySensor(VoltronicEntity, BinarySensorEntity):
 
 class VoltronicSlowBinarySensor(VoltronicEntity, BinarySensorEntity):
     entity_description: VoltronicSlowBinaryDescription
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {ATTR_UPDATE_GROUP: UPDATE_GROUP_SLOW}
 
     @property
     def is_on(self) -> bool | None:
@@ -188,7 +187,11 @@ class VoltronicFaultSensor(VoltronicEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"faults": self.coordinator.data.warnings.faults, "fault_mode": self._fault_mode}
+        return {
+            ATTR_UPDATE_GROUP: UPDATE_GROUP_SLOW,
+            "faults": self.coordinator.data.warnings.faults,
+            "fault_mode": self._fault_mode,
+        }
 
 
 class VoltronicWarningSensor(VoltronicEntity, BinarySensorEntity):
@@ -200,4 +203,7 @@ class VoltronicWarningSensor(VoltronicEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"warnings": self.coordinator.data.warnings.warnings}
+        return {
+            ATTR_UPDATE_GROUP: UPDATE_GROUP_SLOW,
+            "warnings": self.coordinator.data.warnings.warnings,
+        }

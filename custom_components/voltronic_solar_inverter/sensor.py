@@ -26,23 +26,35 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ATTR_UPDATE_GROUP,
+    CONTROL_DUPLICATE_KEYS,
     DISABLED_KEYS,
     HIDDEN_KEYS,
+    MEDIAN_WINDOW,
     SMOOTHING_ABSOLUTE_THRESHOLD_W,
     SMOOTHING_HEARTBEAT,
     SMOOTHING_RELATIVE_THRESHOLD,
     SMOOTHING_WINDOW,
+    UPDATE_GROUP_SLOW,
 )
-from .coordinator import FastData, SlowData, VoltronicConfigEntry, VoltronicFastCoordinator
-from .entity import VoltronicEntity, is_supported
+from .coordinator import (
+    FastData,
+    SlowData,
+    VoltronicConfigEntry,
+    VoltronicFastCoordinator,
+    VoltronicRuntimeData,
+)
+from .entity import VoltronicEntity, is_supported, remove_entities
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
-from .smoothing import SmoothedValue
+from .smoothing import DailyMax, SmoothedValue
 from .protocol.parsers import (
     BATTERY_TYPES,
     CHARGE_STAGES,
@@ -63,6 +75,10 @@ PARALLEL_UPDATES = 0
 class VoltronicFastSensorDescription(SensorEntityDescription):
     value_fn: Callable[[FastData], StateType]
     requires: str | None = None  # FastData field that must have been read
+    precision: int | None = None  # decimals of the state itself (rounded before it is recorded)
+    smoothing_window: float = SMOOTHING_WINDOW  # smoothed sensors only
+    smoothing_statistic: str = "mean"  # "mean", "median" or "max"
+    smoothing_daily: bool = False  # statistic over the current local day instead of a window
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -70,6 +86,15 @@ class VoltronicSlowSensorDescription(SensorEntityDescription):
     value_fn: Callable[[SlowData], StateType | datetime]
     code_fn: Callable[[SlowData], Any] | None = None  # raw code shown as attribute for enums
     requires: str | None = None  # SlowData field that must have been read
+    precision: int | None = None  # decimals of the state itself (rounded before it is recorded)
+
+
+def _round(value: StateType | datetime, precision: int | None) -> StateType | datetime:
+    """Round numbers to ``precision`` decimals (int for 0) so the recorder never sees noise digits."""
+    if precision is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    rounded = round(value, precision)
+    return int(rounded) if precision == 0 else rounded
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -77,25 +102,31 @@ class VoltronicIdentitySensorDescription(SensorEntityDescription):
     value_fn: Callable[[DeviceIdentity], StateType]
 
 
-def _voltage(key: str, value_fn, **kwargs) -> dict[str, Any]:
+def _voltage(key: str, value_fn, precision: int = 1, **kwargs) -> dict[str, Any]:
+    """Battery/PV voltages keep one decimal; mains voltages (~230 V) pass precision=0."""
     return dict(
         key=key,
         translation_key=key,
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
+        precision=precision,
+        suggested_display_precision=precision,
         value_fn=value_fn,
         **kwargs,
     )
 
 
 def _current(key: str, value_fn, **kwargs) -> dict[str, Any]:
+    """Currents are whole amperes."""
     return dict(
         key=key,
         translation_key=key,
         device_class=SensorDeviceClass.CURRENT,
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         state_class=SensorStateClass.MEASUREMENT,
+        precision=0,
+        suggested_display_precision=0,
         value_fn=value_fn,
         **kwargs,
     )
@@ -126,9 +157,11 @@ def _power(key: str, value_fn, **kwargs) -> dict[str, Any]:
 
 
 FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
-    VoltronicFastSensorDescription(**_voltage("grid_voltage", lambda d: d.status.grid_voltage)),
+    VoltronicFastSensorDescription(**_voltage("grid_voltage", lambda d: d.status.grid_voltage, 0)),
     VoltronicFastSensorDescription(**_frequency("grid_frequency", lambda d: d.status.grid_frequency)),
-    VoltronicFastSensorDescription(**_voltage("ac_output_voltage", lambda d: d.status.ac_output_voltage)),
+    VoltronicFastSensorDescription(
+        **_voltage("ac_output_voltage", lambda d: d.status.ac_output_voltage, 0)
+    ),
     VoltronicFastSensorDescription(
         **_frequency("ac_output_frequency", lambda d: d.status.ac_output_frequency)
     ),
@@ -141,7 +174,8 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         value_fn=lambda d: d.status.ac_output_apparent_power,
     ),
     VoltronicFastSensorDescription(
-        **_power("ac_output_active_power", lambda d: d.status.ac_output_active_power)
+        # Every sample; exclude it from the recorder if the interval is short
+        **_power("ac_output_active_power_raw", lambda d: d.status.ac_output_active_power)
     ),
     VoltronicFastSensorDescription(
         key="load_percent",
@@ -199,8 +233,8 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         )
     ),
     VoltronicFastSensorDescription(
-        # HGRID[6]; sign convention not verified yet
-        **_power("grid_power", lambda d: d.grid_power, requires="grid_power")
+        # HGRID[6]; sign convention not verified yet. Every sample, like the other *_raw.
+        **_power("grid_power_raw", lambda d: d.grid_power, requires="grid_power")
     ),
     VoltronicFastSensorDescription(
         key="device_mode",
@@ -244,13 +278,13 @@ def _diag(kwargs: dict[str, Any], enabled: bool = True) -> dict[str, Any]:
 SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
     # Ratings
     VoltronicSlowSensorDescription(
-        **_diag(_voltage("grid_rating_voltage", lambda d: d.rated.grid_rating_voltage), False)
+        **_diag(_voltage("grid_rating_voltage", lambda d: d.rated.grid_rating_voltage, 0), False)
     ),
     VoltronicSlowSensorDescription(
         **_diag(_current("grid_rating_current", lambda d: d.rated.grid_rating_current), False)
     ),
     VoltronicSlowSensorDescription(
-        **_diag(_voltage("ac_output_rating_voltage", lambda d: d.rated.ac_output_rating_voltage))
+        **_diag(_voltage("ac_output_rating_voltage", lambda d: d.rated.ac_output_rating_voltage, 0))
     ),
     VoltronicSlowSensorDescription(
         **_diag(_frequency("ac_output_rating_frequency", lambda d: d.rated.ac_output_rating_frequency))
@@ -347,6 +381,8 @@ def _diag_voltage(
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=enabled,
+        precision=1,
+        suggested_display_precision=1,
         value_fn=value_fn,
         requires=requires,
     )
@@ -487,12 +523,54 @@ EXTRA_SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
         False,
         device_class=SensorDeviceClass.CURRENT,
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        precision=0,
+        suggested_display_precision=0,
     ),
 )
 
 # Same source as the matching *_raw sensor, published only on significant changes.
 SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(**_power("pv_power", lambda d: d.status.pv_charging_power)),
+    VoltronicFastSensorDescription(
+        **_power("grid_power", lambda d: d.grid_power, requires="grid_power")
+    ),
+    VoltronicFastSensorDescription(
+        **_power("ac_output_active_power", lambda d: d.status.ac_output_active_power)
+    ),
+    # Median / maximum of the last 10 minutes and the median of today (from local midnight):
+    # how the PV power has really been running lately.
+    VoltronicFastSensorDescription(
+        **_power(
+            "pv_power_median_10min",
+            lambda d: d.status.pv_charging_power,
+            smoothing_window=MEDIAN_WINDOW,
+            smoothing_statistic="median",
+        )
+    ),
+    VoltronicFastSensorDescription(
+        **_power(
+            "pv_power_max_10min",
+            lambda d: d.status.pv_charging_power,
+            smoothing_window=MEDIAN_WINDOW,
+            smoothing_statistic="max",
+        )
+    ),
+    VoltronicFastSensorDescription(
+        **_power(
+            "pv_power_median_today",
+            lambda d: d.status.pv_charging_power,
+            smoothing_window=float("inf"),
+            smoothing_statistic="median",
+            smoothing_daily=True,
+        )
+    ),
+)
+
+# Highest PV power since midnight (HA local time).
+DAILY_MAX_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
+    VoltronicFastSensorDescription(
+        **_power("pv_power_max_today", lambda d: d.status.pv_charging_power)
+    ),
 )
 
 IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
@@ -551,6 +629,22 @@ EXTRA_SLOW_SENSORS = _with_defaults(EXTRA_SLOW_SENSORS)
 IDENTITY_SENSORS = _with_defaults(IDENTITY_SENSORS)
 
 
+def _duplicates_control(key: str, data: VoltronicRuntimeData) -> bool:
+    """True if a control entity (select/number) already shows and sets this value."""
+    if key not in CONTROL_DUPLICATE_KEYS:
+        return False
+    identity = data.identity
+    if key in ("output_source_priority", "charger_source_priority"):
+        return True
+    if key == "solar_supply_priority":
+        return identity.h_protocol is not None
+    if key == "max_charging_current":
+        return bool(identity.charging_current_options)
+    if key == "max_ac_charging_current":
+        return bool(identity.utility_charging_current_options)
+    return data.slow.data.rated.battery_rating_voltage == 24.0  # the voltage numbers
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: VoltronicConfigEntry,
@@ -558,15 +652,19 @@ async def async_setup_entry(
 ) -> None:
     data = entry.runtime_data
     identity = data.identity
+    all_slow = SLOW_SENSORS + EXTRA_SLOW_SENSORS
+    duplicates = {d.key for d in all_slow if _duplicates_control(d.key, data)}
+    slow_descriptions = [d for d in all_slow if d.key not in duplicates and is_supported(d, identity)]
+    # Sensors dropped in 0.4.0 (they repeat a control entity): clean up the old registry entries.
+    remove_entities(hass, identity, "sensor", duplicates)
     entities: list[SensorEntity] = [
         VoltronicFastSensor(data.fast, d) for d in FAST_SENSORS if is_supported(d, identity)
     ]
-    entities += [VoltronicSmoothedSensor(data.fast, d) for d in SMOOTHED_SENSORS]
     entities += [
-        VoltronicSlowSensor(data.slow, d)
-        for d in SLOW_SENSORS + EXTRA_SLOW_SENSORS
-        if is_supported(d, identity)
+        VoltronicSmoothedSensor(data.fast, d) for d in SMOOTHED_SENSORS if is_supported(d, identity)
     ]
+    entities += [VoltronicDailyMaxSensor(data.fast, d) for d in DAILY_MAX_SENSORS]
+    entities += [VoltronicSlowSensor(data.slow, d) for d in slow_descriptions]
     entities += [
         VoltronicIdentitySensor(data.slow, d)
         for d in IDENTITY_SENSORS
@@ -580,11 +678,12 @@ class VoltronicFastSensor(VoltronicEntity, SensorEntity):
 
     @property
     def native_value(self) -> StateType:
-        return self.entity_description.value_fn(self.coordinator.data)
+        description = self.entity_description
+        return _round(description.value_fn(self.coordinator.data), description.precision)
 
 
 class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
-    """Moving average that writes a new state only on a significant change.
+    """Moving average (or median) that writes a new state only on a significant change.
 
     Skipping async_write_ha_state() for insignificant changes is what keeps the
     recorder database small; availability changes are always written.
@@ -597,14 +696,18 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
     ) -> None:
         super().__init__(coordinator, description)
         self._smoother = SmoothedValue(
-            window=SMOOTHING_WINDOW,
+            window=description.smoothing_window,
+            statistic=description.smoothing_statistic,
             relative_threshold=SMOOTHING_RELATIVE_THRESHOLD,
             absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_W,
             heartbeat=SMOOTHING_HEARTBEAT,
         )
         if coordinator.data is not None:
-            self._smoother.add(time.monotonic(), description.value_fn(coordinator.data))
+            self._smoother.add(time.monotonic(), description.value_fn(coordinator.data), self._day())
         self._written_available = coordinator.last_update_success  # state written on add
+
+    def _day(self):
+        return dt_util.now().date() if self.entity_description.smoothing_daily else None
 
     @property
     def native_value(self) -> StateType:
@@ -615,7 +718,57 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
         changed = False
         if self.coordinator.last_update_success:
             changed = self._smoother.add(
-                time.monotonic(), self.entity_description.value_fn(self.coordinator.data)
+                time.monotonic(),
+                self.entity_description.value_fn(self.coordinator.data),
+                self._day(),
+            )
+        if changed or self.available != self._written_available:
+            self._written_available = self.available
+            self.async_write_ha_state()
+
+
+class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):
+    """Highest value since local midnight; restored after a restart on the same day.
+
+    Writes a state only when the maximum rises (or the day changes), so it adds
+    next to nothing to the recorder.
+    """
+
+    entity_description: VoltronicFastSensorDescription
+
+    def __init__(
+        self, coordinator: VoltronicFastCoordinator, description: VoltronicFastSensorDescription
+    ) -> None:
+        super().__init__(coordinator, description)
+        self._max = DailyMax()
+        self._written_available = coordinator.last_update_success
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        today = dt_util.now().date()
+        if (
+            last is not None
+            and last.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+            and dt_util.as_local(last.last_updated).date() == today
+        ):
+            try:
+                self._max.restore(today, float(last.state))
+            except ValueError:
+                pass
+        if self.coordinator.data is not None:
+            self._max.add(today, self.entity_description.value_fn(self.coordinator.data))
+
+    @property
+    def native_value(self) -> StateType:
+        return self._max.value
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        changed = False
+        if self.coordinator.last_update_success:
+            changed = self._max.add(
+                dt_util.now().date(), self.entity_description.value_fn(self.coordinator.data)
             )
         if changed or self.available != self._written_available:
             self._written_available = self.available
@@ -627,13 +780,15 @@ class VoltronicSlowSensor(VoltronicEntity, SensorEntity):
 
     @property
     def native_value(self) -> StateType | datetime:
-        return self.entity_description.value_fn(self.coordinator.data)
+        description = self.entity_description
+        return _round(description.value_fn(self.coordinator.data), description.precision)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        if self.entity_description.code_fn is None:
-            return None
-        return {"code": self.entity_description.code_fn(self.coordinator.data)}
+        attributes: dict[str, Any] = {ATTR_UPDATE_GROUP: UPDATE_GROUP_SLOW}
+        if self.entity_description.code_fn is not None:
+            attributes["code"] = self.entity_description.code_fn(self.coordinator.data)
+        return attributes
 
 
 class VoltronicIdentitySensor(VoltronicEntity, SensorEntity):

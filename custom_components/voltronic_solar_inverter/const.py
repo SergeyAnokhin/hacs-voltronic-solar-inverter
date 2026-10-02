@@ -15,6 +15,10 @@ DEFAULT_PORT: Final = 8899
 CONF_FAST_INTERVAL: Final = "fast_scan_interval"
 CONF_SLOW_INTERVAL: Final = "slow_scan_interval"
 
+# Attribute on every entity polled by the slow coordinator (settings, ratings, flags, warnings).
+ATTR_UPDATE_GROUP: Final = "update_group"
+UPDATE_GROUP_SLOW: Final = "slow"
+
 DEFAULT_FAST_INTERVAL: Final = 10  # s, QPIGS + QMOD
 DEFAULT_SLOW_INTERVAL: Final = 60  # s, QPIRI + QFLAG + QPIWS
 MIN_FAST_INTERVAL: Final = 2  # one fast cycle (QPIGS + QMOD + HGRID) takes ~1.5 s
@@ -64,3 +68,21 @@ SMOOTHING_WINDOW: Final = 60.0
 SMOOTHING_RELATIVE_THRESHOLD: Final = 0.10
 SMOOTHING_ABSOLUTE_THRESHOLD_W: Final = 20.0
 SMOOTHING_HEARTBEAT: Final = 600.0
+# PV power median sensor: median over this many seconds, same publish rules.
+MEDIAN_WINDOW: Final = 600.0  # also used for the 10 min maximum
+
+# Read-only sensors that only repeat a control entity (switch/select/number) are
+# not created while that control exists (see sensor._duplicates_control).
+CONTROL_DUPLICATE_KEYS: Final = frozenset(
+    {
+        "output_source_priority",
+        "charger_source_priority",
+        "solar_supply_priority",
+        "max_charging_current",
+        "max_ac_charging_current",
+        "battery_recharge_voltage",
+        "battery_redischarge_voltage",
+        "battery_under_voltage",
+        "battery_bulk_voltage",
+    }
+)

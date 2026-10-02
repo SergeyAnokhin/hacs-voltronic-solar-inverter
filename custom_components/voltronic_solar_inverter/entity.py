@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -29,6 +31,17 @@ def is_supported(description: EntityDescription, identity: DeviceIdentity) -> bo
     """False for H-dialect entities on inverters that do not answer QPRTL."""
     requires = getattr(description, "requires", None)
     return requires not in H_FIELDS or identity.h_protocol is not None
+
+
+def remove_entities(
+    hass: HomeAssistant, identity: DeviceIdentity, domain: str, keys: Iterable[str]
+) -> None:
+    """Delete registry entries of entities that are no longer created (by description key)."""
+    registry = er.async_get(hass)
+    for key in keys:
+        unique_id = f"{identity.serial_number}_{key}"
+        if entity_id := registry.async_get_entity_id(domain, DOMAIN, unique_id):
+            registry.async_remove(entity_id)
 
 
 class VoltronicEntity[CoordinatorT: VoltronicCoordinator](CoordinatorEntity[CoordinatorT]):

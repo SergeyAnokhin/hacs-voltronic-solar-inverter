@@ -58,8 +58,11 @@
       "ac_output_apparent_power": {
         "name": "AC output apparent power"
       },
+      "ac_output_active_power_raw": {
+        "name": "Load power raw"
+      },
       "ac_output_active_power": {
-        "name": "AC output power"
+        "name": "Load power"
       },
       "load_percent": {
         "name": "Load"
@@ -96,6 +99,18 @@
       },
       "pv_power": {
         "name": "PV power"
+      },
+      "pv_power_median_10min": {
+        "name": "PV power median (10 min)"
+      },
+      "pv_power_max_10min": {
+        "name": "PV power max (10 min)"
+      },
+      "pv_power_median_today": {
+        "name": "PV power median today"
+      },
+      "pv_power_max_today": {
+        "name": "PV power max today"
       },
       "scc_battery_voltage": {
         "name": "Solar charger battery voltage"
@@ -156,6 +171,9 @@
       },
       "protocol_id": {
         "name": "Protocol"
+      },
+      "grid_power_raw": {
+        "name": "Grid power raw"
       },
       "grid_power": {
         "name": "Grid power"
@@ -496,33 +514,6 @@
       },
       "dc_dc_over_current": {
         "name": "DC/DC over-current"
-      },
-      "flag_buzzer": {
-        "name": "Buzzer"
-      },
-      "flag_overload_bypass": {
-        "name": "Overload bypass"
-      },
-      "flag_power_saving": {
-        "name": "Power saving"
-      },
-      "flag_lcd_return_to_default": {
-        "name": "Return to default LCD screen"
-      },
-      "flag_overload_restart": {
-        "name": "Auto restart on overload"
-      },
-      "flag_over_temperature_restart": {
-        "name": "Auto restart on over-temperature"
-      },
-      "flag_backlight": {
-        "name": "LCD backlight"
-      },
-      "flag_primary_source_interrupt_alarm": {
-        "name": "Beep on primary source interrupt"
-      },
-      "flag_fault_code_record": {
-        "name": "Record fault codes"
       }
     },
     "switch": {

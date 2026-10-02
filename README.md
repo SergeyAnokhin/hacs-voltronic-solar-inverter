@@ -7,7 +7,7 @@
 
 A custom Home Assistant integration that reads live data, ratings, settings, warnings and option flags from Voltronic-compatible (PI30 protocol) hybrid solar inverters — developed and tested on the **Vevor GD5548JMH** (reports as `VMII-4000`, 24 V / 4000 W, firmware `00040.09`). The inverter's RS232 port is reached through an RS232-to-TCP gateway (e.g. Elfin EW10/EE10). It also creates switches, selects and numbers that change inverter settings (see the warning above).
 
-> **Status: 0.3.0, early.** Reading is tested against responses recorded from the real inverter. The setting commands are implemented but **not yet verified on the device**.
+> **Status: 0.4.0, early.** Reading is tested against responses recorded from the real inverter. The setting commands are implemented but **not yet verified on the device**.
 
 ## Requirements
 
@@ -46,9 +46,9 @@ Setup reads the protocol, model and serial number (`QPI`, `QMN`, `QID`); the ser
 
 One device (model, serial number, firmware) with:
 
-- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, PV voltage / current, **PV power** (smoothed, records few rows) and **PV power raw** (every sample, for live dashboards), **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**.
-- **Diagnostic sensors:** current settings and ratings (output source priority, charger source priority, solar supply priority (program 43), battery type, AC input range, back-to-utility / back-to-battery / cut-off / bulk / float voltages, battery low-alarm voltage, max charging currents), inverter clock and its offset from Home Assistant's time, fan speeds. **Hidden by default** (static values that never change): rated output values, battery rating voltage, serial number, firmware. Disabled by default: equalization settings, bus voltage, solar-charger battery voltage, battery level estimate, grid ratings, machine type, topology, output mode, second-output (dual output) thresholds, BMS SOC thresholds, grid-tie current, firmware date.
-- **Binary sensors:** AC output, load on, charging, solar charging, grid charging, SBU priority, fault, warning (with the active items as attributes); one diagnostic problem sensor per warning/fault bit (grid lost, battery low, overload, over-temperature, … — five on by default); the option flags (buzzer, overload bypass, power saving, backlight, …); disabled by default: equalization enabled / active.
+- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, PV voltage / current, **PV power** (smoothed, records few rows) and **PV power raw** (every sample, for live dashboards), **PV power median / max (10 min)** and **PV power median / max today** (the daily ones start over at midnight; max today is restored after a restart), the same smoothed / raw pairs for grid power and **Load power** (AC output, W), **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**.
+- **Diagnostic sensors:** current settings and ratings (battery type, AC input range, float voltage, battery low-alarm voltage; the settings that have a control entity below, e.g. priorities, charge currents and the 24 V voltage thresholds, are shown by that control instead of a duplicate sensor), inverter clock and its offset from Home Assistant's time, fan speeds. **Hidden by default** (static values that never change): rated output values, battery rating voltage, serial number, firmware. Disabled by default: equalization settings, bus voltage, solar-charger battery voltage, battery level estimate, grid ratings, machine type, topology, output mode, second-output (dual output) thresholds, BMS SOC thresholds, grid-tie current, firmware date.
+- **Binary sensors:** AC output, load on, charging, solar charging, grid charging, SBU priority, fault, warning (with the active items as attributes); one diagnostic problem sensor per warning/fault bit (grid lost, battery low, overload, over-temperature, … — five on by default); disabled by default: equalization enabled / active.
 - **Control entities (change settings, at your own risk):** switches for the 9 option flags, selects for output / charger source priority (only owner-verified values: *SBU*, *Only solar*) and solar supply priority (program 43: battery first / load first), numbers for max charging current and max utility charging current (values the inverter reports as allowed) and, on 24 V systems, back-to-utility / back-to-battery / cut-off / bulk voltages. A rejected command (`NAK`) raises an error; after `ACK` the settings are re-read. **Use at your own risk** — see [docs/integration.md](docs/integration.md#control-entities).
 
 Full list with protocol sources: [docs/integration.md](docs/integration.md).
@@ -61,12 +61,18 @@ Full list with protocol sources: [docs/integration.md](docs/integration.md).
 
 ## Fast dashboard, small database
 
-Every changed value is a new row in the recorder database (Home Assistant writes a state only when it changes, keeps raw history for 10 days, and 5-minute/hourly long-term statistics for every sensor with a state class). With a short *Live values interval* (down to 2 s) fast-changing sensors would fill it, so the integration offers a **raw / normal pair** (for now for PV power, more can follow):
+Every changed value is a new row in the recorder database (Home Assistant writes a state only when it changes, keeps raw history for 10 days, and 5-minute/hourly long-term statistics for every sensor with a state class). With a short *Live values interval* (down to 2 s) fast-changing sensors would fill it, so the integration offers a **raw / normal pair** (PV power, grid power, AC output power):
 
 | Entity | Updates | Use it for |
 |---|---|---|
 | `sensor.<device>_pv_power_raw` (*PV power raw*) | every poll | live dashboard cards; **exclude it from the recorder** |
 | `sensor.<device>_pv_power` (*PV power*) | mean of the last 60 s, written only when it moves by ≥ 10 % (and ≥ 20 W), drops to 0, or after 10 min with any change | history graphs, statistics, automations; the dashboard does not jump |
+| `sensor.<device>_pv_power_median_10min` (*PV power median (10 min)*) | median of the last 10 min, same write rules | how the sun has really been doing lately, without cloud spikes |
+| `sensor.<device>_pv_power_max_10min` (*PV power max (10 min)*) | maximum of the last 10 min, same write rules | recent peak |
+| `sensor.<device>_pv_power_median_today` (*PV power median today*) | median since midnight, same write rules; starts over at midnight and after a restart | typical power today |
+| `sensor.<device>_pv_power_max_today` (*PV power max today*) | written only when a new maximum is reached; starts over at midnight | today's peak; survives a restart |
+
+`grid_power` / `grid_power_raw` and `ac_output_active_power` (*Load power*, the output in W) / `ac_output_active_power_raw` follow the same pair rule. Values are rounded before they reach the state (and so the database): battery-side and PV voltages to 0.1 V, grid / AC output voltages and all currents to whole numbers.
 
 Exclude the raw sensors in `configuration.yaml`:
 

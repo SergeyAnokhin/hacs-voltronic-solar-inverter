@@ -25,7 +25,7 @@ Where to find things. `custom_components/` contains only this integration (the H
 | [`…/protocol/parsers.py`](../custom_components/voltronic_solar_inverter/protocol/parsers.py) | Response dataclasses and parsers; enum code tables incl. the `*_VERIFIED` priority codes; QPIWS bit table |
 | [`…/protocol/commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) | **All** setting commands (validated builders), 24 V voltage ranges, `QUERY_RE` |
 | [`…/protocol/errors.py`](../custom_components/voltronic_solar_inverter/protocol/errors.py) | Exception hierarchy (`InverterError` …) |
-| [`…/smoothing.py`](../custom_components/voltronic_solar_inverter/smoothing.py) | `SmoothedValue`: 60 s mean that publishes only significant changes (for the plain sensor of a raw/smoothed pair); no HA imports |
+| [`…/smoothing.py`](../custom_components/voltronic_solar_inverter/smoothing.py) | `SmoothedValue` (mean or median over a window, publishes only significant changes) and `DailyMax`; no HA imports |
 | [`…/coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py), [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | Fast/slow coordinators, runtime data; base entity and the single write path |
 | `…/sensor.py`, `binary_sensor.py`, `switch.py`, `select.py`, `number.py` | Entity platforms (descriptions with `value_fn`) |
 | `…/config_flow.py`, `diagnostics.py`, `strings.json`, `translations/en.json`, `icons.json` | Config/options flow, redacted diagnostics, UI text (en only), icons |

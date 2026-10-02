@@ -13,6 +13,7 @@ _spec = importlib.util.spec_from_file_location("smoothing", _PATH)
 smoothing = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(smoothing)
 SmoothedValue = smoothing.SmoothedValue
+DailyMax = smoothing.DailyMax
 
 
 def make() -> SmoothedValue:
@@ -82,3 +83,54 @@ def test_unchanged_mean_never_publishes():
     s = make()
     s.add(0, 0)
     assert all(s.add(t, 0) is False for t in range(10, 2000, 10))
+
+
+def test_median_window_ignores_outliers():
+    value = SmoothedValue(window=600, statistic="median", relative_threshold=0, absolute_threshold=0)
+    for i, sample in enumerate((100, 110, 5000, 120, 105)):
+        value.add(float(i * 10), sample)
+    assert value.value == 110
+
+
+def test_max_window_and_daily_median_reset():
+    from datetime import date
+
+    peak = SmoothedValue(window=600, statistic="max", relative_threshold=0, absolute_threshold=0)
+    for i, sample in enumerate((100, 900, 300)):
+        peak.add(float(i * 10), sample)
+    assert peak.value == 900
+    peak.add(700.0, 300)  # the 900 left the 10 min window
+    assert peak.value == 300
+
+    daily = SmoothedValue(
+        window=float("inf"), statistic="median", relative_threshold=0, absolute_threshold=0
+    )
+    monday, tuesday = date(2026, 10, 5), date(2026, 10, 6)
+    for i, sample in enumerate((100, 200, 900)):
+        daily.add(float(i), sample, monday)
+    assert daily.value == 200
+    daily.add(10.0, 50, tuesday)  # a new day starts over
+    assert daily.value == 50
+
+
+def test_daily_max_rises_and_resets_on_new_day():
+    from datetime import date
+
+    daily = DailyMax()
+    monday, tuesday = date(2026, 10, 5), date(2026, 10, 6)
+    assert daily.add(monday, 300.4) is True
+    assert daily.add(monday, 200) is False
+    assert daily.add(monday, 900.6) is True
+    assert daily.value == 901
+    assert daily.add(monday, None) is False
+    assert daily.add(tuesday, 0) is True  # new day starts from the current sample
+    assert daily.value == 0
+
+
+def test_daily_max_restore():
+    from datetime import date
+
+    daily = DailyMax()
+    daily.restore(date(2026, 10, 5), 1234.0)
+    assert daily.add(date(2026, 10, 5), 1000) is False
+    assert daily.value == 1234

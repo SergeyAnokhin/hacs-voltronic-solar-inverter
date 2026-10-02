@@ -190,14 +190,22 @@ async def test_setup_creates_read_only_entities(hass: HomeAssistant, inverter: I
     entry = await setup(hass)
     assert entry.state is ConfigEntryState.LOADED
 
-    assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "237.8"
+    assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "238"  # mains voltage: whole volts
     assert hass.states.get(f"sensor.{PREFIX}_battery_voltage").state == "25.6"
     assert hass.states.get(f"sensor.{PREFIX}_mode").state == "battery"
-    out_prio = hass.states.get(f"sensor.{PREFIX}_output_source_priority")
-    assert out_prio.state == "sbu"
-    assert out_prio.attributes["code"] == 1
-    assert hass.states.get(f"sensor.{PREFIX}_charger_source_priority").state == "only_solar"
+    # Settings that have a select/number/switch are not duplicated as read-only sensors.
+    for entity_id in (
+        f"sensor.{PREFIX}_output_source_priority",
+        f"sensor.{PREFIX}_charger_source_priority",
+        f"sensor.{PREFIX}_max_charging_current",
+        f"binary_sensor.{PREFIX}_buzzer",
+    ):
+        assert hass.states.get(entity_id) is None, entity_id
+    assert hass.states.get(f"select.{PREFIX}_output_source_priority").state == "sbu"
+    assert hass.states.get(f"switch.{PREFIX}_buzzer").state == STATE_ON
     assert hass.states.get(f"sensor.{PREFIX}_battery_type").state == "user_defined"
+    assert hass.states.get(f"sensor.{PREFIX}_battery_type").attributes["update_group"] == "slow"
+    assert "update_group" not in hass.states.get(f"sensor.{PREFIX}_battery_voltage").attributes
     assert hass.states.get(f"sensor.{PREFIX}_firmware_version").state == "00040.09"
     assert hass.states.get(f"binary_sensor.{PREFIX}_ac_output").state == STATE_ON
     assert hass.states.get(f"binary_sensor.{PREFIX}_sbu_priority").state == STATE_ON
@@ -206,7 +214,6 @@ async def test_setup_creates_read_only_entities(hass: HomeAssistant, inverter: I
     assert hass.states.get(f"binary_sensor.{PREFIX}_warning").state == STATE_OFF
     assert hass.states.get(f"binary_sensor.{PREFIX}_fault").state == STATE_OFF
     assert hass.states.get(f"binary_sensor.{PREFIX}_grid_lost").state == STATE_OFF
-    assert hass.states.get(f"binary_sensor.{PREFIX}_buzzer").state == STATE_ON
     # Voltage-based battery % exists but is disabled by default.
     registry = er.async_get(hass)
     estimate = registry.async_get(f"sensor.{PREFIX}_battery_level_estimate_voltage_based")
@@ -376,11 +383,13 @@ async def test_h_dialect_entities(hass: HomeAssistant, inverter: Inverter) -> No
     assert state(f"sensor.{PREFIX}_ac_output_off_time").state == "00:00"
     assert state(f"sensor.{PREFIX}_ac_charger_start_time").state == "01:00"
     assert state(f"sensor.{PREFIX}_ac_charger_stop_time").state == "02:00"
-    assert state(f"sensor.{PREFIX}_solar_supply_priority").state == "load_first"
+    assert state(f"sensor.{PREFIX}_solar_supply_priority") is None  # the select shows it
+    assert state(f"select.{PREFIX}_solar_supply_priority").state == "load_first"
     assert state(f"sensor.{PREFIX}_charge_stage").state == "idle"
     assert state(f"sensor.{PREFIX}_inverter_temperature").state == "28"
     assert state(f"sensor.{PREFIX}_transformer_temperature").state == "32"
     assert state(f"sensor.{PREFIX}_grid_power").state == "0"
+    assert state(f"sensor.{PREFIX}_grid_power_raw").state == "0"
     assert state(f"sensor.{PREFIX}_battery_low_alarm_voltage").state == "22.0"
     # Equalization is read but its entities are disabled by default.
     registry = er.async_get(hass)
@@ -416,6 +425,7 @@ async def test_inverter_without_h_dialect(hass: HomeAssistant, inverter: Inverte
     await setup(hass)
     assert hass.states.get(f"sensor.{PREFIX}_pv_energy_today") is None
     assert hass.states.get(f"sensor.{PREFIX}_grid_power") is None
+    assert hass.states.get(f"sensor.{PREFIX}_grid_power_raw") is None
     assert hass.states.get(f"sensor.{PREFIX}_charge_stage").state == "idle"  # Q1 still works
     sent = [frame_name(f) for f in inverter.gateway.sent]
     assert "HGEN" not in sent and "HEEP2" not in sent  # not polled at all
@@ -475,6 +485,38 @@ async def test_pv_power_raw_and_smoothed(hass: HomeAssistant, inverter: Inverter
     inverter.offline = False
     await poll(300)
     assert hass.states.get(smooth_id).state != STATE_UNAVAILABLE
+
+
+async def test_pv_power_median_and_daily_max(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.table["QPIGS"] = qpigs_with_pv_power(1000)
+    entry = await setup(hass)
+    median_id = f"sensor.{PREFIX}_pv_power_median_10min"
+    max_id = f"sensor.{PREFIX}_pv_power_max_today"
+    assert hass.states.get(median_id).state == "1000"
+    assert hass.states.get(max_id).state == "1000"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10min").state == "1000"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_median_today").state == "1000"
+
+    for watts in (1500, 100, 900):
+        inverter.table["QPIGS"] = qpigs_with_pv_power(watts)
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
+    # medians: 1250 and 1000 are published, 950 is not (< 10 % away from 1000)
+    assert hass.states.get(max_id).state == "1500"
+    assert hass.states.get(median_id).state == "1000"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10min").state == "1500"
+
+
+async def test_values_are_rounded_in_the_state(hass: HomeAssistant, inverter: Inverter) -> None:
+    await setup(hass)
+    # Battery side keeps one decimal, currents are whole amperes, the state itself is rounded.
+    assert hass.states.get(f"sensor.{PREFIX}_battery_voltage").state == "25.6"
+    for entity_id in (
+        f"sensor.{PREFIX}_battery_charge_current",
+        f"sensor.{PREFIX}_pv_current",
+        f"sensor.{PREFIX}_ac_output_voltage",
+    ):
+        assert "." not in hass.states.get(entity_id).state, entity_id
 
 
 async def test_static_entities_hidden_by_default(hass: HomeAssistant, inverter: Inverter) -> None:
