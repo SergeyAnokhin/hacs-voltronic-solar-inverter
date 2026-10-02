@@ -1,4 +1,6 @@
-# Voltronic Solar Inverter for Home Assistant (HACS)
+# Voltronic/Vevor Solar Inverter for Home Assistant (HACS)
+
+<img width="225" height="300" alt="image" src="https://github.com/user-attachments/assets/ea0d73d1-ee7d-422f-8414-9d203093059d" />
 
 > [!CAUTION]
 > **Changing inverter settings from Home Assistant is entirely at your own risk.** The switches, selects and numbers of this integration send setting commands straight to the inverter. A wrong value can change how the battery is charged or cut off, where the load is powered from, or what the inverter does on overload or over-temperature. There is no undo and no warranty; check every change on the inverter's display.
@@ -8,6 +10,11 @@
 A custom Home Assistant integration that reads live data, ratings, settings, warnings and option flags from Voltronic-compatible (PI30 protocol) hybrid solar inverters — developed and tested on the **Vevor GD5548JMH** (reports as `VMII-4000`, 24 V / 4000 W, firmware `00040.09`). The inverter's RS232 port is reached through an RS232-to-TCP gateway (e.g. Elfin EW10/EE10). It also creates switches, selects and numbers that change inverter settings (see the warning above).
 
 > **Status: 0.4.0, early.** Reading is tested against responses recorded from the real inverter. The setting commands are implemented but **not yet verified on the device**.
+
+
+<img width="420" height="707" alt="image" src="https://github.com/user-attachments/assets/0e64709b-1383-4302-8780-63c4cb44ec2b" />
+<img width="430" height="421" alt="image" src="https://github.com/user-attachments/assets/7ba76456-02a6-4957-8fcc-53ff0c48d17b" />
+
 
 ## Requirements
 
