@@ -1,0 +1,97 @@
+{
+  "host": "192.168.1.47",
+  "taken_at": "2026-10-02 19:34:12",
+  "stream": {
+    "Q1": {
+      "raw_hex": "283033302035343732203030303030203030303030203635353335203635353335203030203030203032382030333920303332203033322030302030302030303020353437322030303030203130c3740d",
+      "text": "030 5472 00000 00000 65535 65535 00 00 028 039 032 032 00 00 000 5472 0000 10",
+      "crc_ok": true,
+      "seconds": 0.516,
+      "error": null
+    },
+    "QBMS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QVFW2": {
+      "raw_hex": "285645524657323a30303030302e3030b6db0d",
+      "text": "VERFW2:00000.00",
+      "crc_ok": true,
+      "seconds": 0.265,
+      "error": null
+    },
+    "QSID": {
+      "raw_hex": "283134353533353535333535353335353533353535333518180d",
+      "text": "1455355535553555355535",
+      "crc_ok": true,
+      "seconds": 0.281,
+      "error": null
+    },
+    "QET": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QEY2026": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QEM202610": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QED20261002": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QLT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QLY2026": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QLM202610": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.079,
+      "error": "timeout"
+    },
+    "QLD20261002": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.047,
+      "error": "timeout"
+    },
+    "QT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    }
+  }
+}

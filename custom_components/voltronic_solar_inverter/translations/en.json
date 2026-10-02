@@ -1,0 +1,497 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to the inverter gateway",
+        "description": "Address of the RS232-to-TCP gateway (e.g. Elfin) connected to the inverter. Only one client can use the gateway at a time.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "fast_scan_interval": "Live values interval",
+          "slow_scan_interval": "Settings and warnings interval"
+        },
+        "data_description": {
+          "host": "IP address or host name of the gateway.",
+          "port": "TCP port of the gateway (Elfin default: 8899).",
+          "fast_scan_interval": "How often live values are read (QPIGS, QMOD).",
+          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The inverter did not answer. Check the gateway address and that no other client is connected to it.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This inverter is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Inverter options",
+        "data": {
+          "fast_scan_interval": "Live values interval",
+          "slow_scan_interval": "Settings and warnings interval",
+          "enable_controls": "Enable control entities"
+        },
+        "data_description": {
+          "fast_scan_interval": "How often live values are read (QPIGS, QMOD).",
+          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS).",
+          "enable_controls": "Create switches, selects and numbers that CHANGE inverter settings. Off by default. The setting commands are not verified on every firmware; use at your own risk."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "grid_voltage": {
+        "name": "Grid voltage"
+      },
+      "grid_frequency": {
+        "name": "Grid frequency"
+      },
+      "ac_output_voltage": {
+        "name": "AC output voltage"
+      },
+      "ac_output_frequency": {
+        "name": "AC output frequency"
+      },
+      "ac_output_apparent_power": {
+        "name": "AC output apparent power"
+      },
+      "ac_output_active_power": {
+        "name": "AC output power"
+      },
+      "load_percent": {
+        "name": "Load"
+      },
+      "bus_voltage": {
+        "name": "Bus voltage"
+      },
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "battery_charge_current": {
+        "name": "Battery charge current"
+      },
+      "battery_discharge_current": {
+        "name": "Battery discharge current"
+      },
+      "battery_power": {
+        "name": "Battery power"
+      },
+      "battery_capacity_estimate": {
+        "name": "Battery level estimate (voltage-based)"
+      },
+      "heatsink_temperature": {
+        "name": "Heat-sink temperature"
+      },
+      "pv_input_current": {
+        "name": "PV current"
+      },
+      "pv_input_voltage": {
+        "name": "PV voltage"
+      },
+      "pv_charging_power": {
+        "name": "PV charging power"
+      },
+      "scc_battery_voltage": {
+        "name": "Solar charger battery voltage"
+      },
+      "grid_rating_voltage": {
+        "name": "Grid rating voltage"
+      },
+      "grid_rating_current": {
+        "name": "Grid rating current"
+      },
+      "ac_output_rating_voltage": {
+        "name": "Rated output voltage"
+      },
+      "ac_output_rating_frequency": {
+        "name": "Rated output frequency"
+      },
+      "ac_output_rating_current": {
+        "name": "Rated output current"
+      },
+      "ac_output_rating_apparent_power": {
+        "name": "Rated output apparent power"
+      },
+      "ac_output_rating_active_power": {
+        "name": "Rated output power"
+      },
+      "battery_rating_voltage": {
+        "name": "Battery rating voltage"
+      },
+      "battery_recharge_voltage": {
+        "name": "Back to utility voltage"
+      },
+      "battery_redischarge_voltage": {
+        "name": "Back to battery voltage"
+      },
+      "battery_under_voltage": {
+        "name": "Battery cut-off voltage"
+      },
+      "battery_bulk_voltage": {
+        "name": "Battery bulk voltage"
+      },
+      "battery_float_voltage": {
+        "name": "Battery float voltage"
+      },
+      "max_charging_current": {
+        "name": "Max charging current"
+      },
+      "max_ac_charging_current": {
+        "name": "Max utility charging current"
+      },
+      "serial_number": {
+        "name": "Serial number"
+      },
+      "firmware_version": {
+        "name": "Firmware version"
+      },
+      "firmware_version_2": {
+        "name": "Solar charger firmware version"
+      },
+      "protocol_id": {
+        "name": "Protocol"
+      },
+      "device_mode": {
+        "name": "Mode",
+        "state": {
+          "power_on": "Power on",
+          "standby": "Standby (output off)",
+          "line": "Line",
+          "battery": "Battery",
+          "fault": "Fault",
+          "power_saving": "Power saving",
+          "shutdown": "Shutdown"
+        }
+      },
+      "output_source_priority": {
+        "name": "Output source priority",
+        "state": {
+          "solar_first": "Solar first (solar → utility)",
+          "sbu": "SBU (solar → battery → utility)",
+          "battery_first": "Battery first (unverified code)"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "charger_source_priority": {
+        "name": "Charger source priority",
+        "state": {
+          "solar_first": "Solar first",
+          "solar_and_utility": "Solar and utility",
+          "only_solar": "Only solar"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "battery_type": {
+        "name": "Battery type",
+        "state": {
+          "agm": "AGM",
+          "flooded": "Flooded",
+          "user_defined": "User-defined"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "input_voltage_range": {
+        "name": "AC input voltage range",
+        "state": {
+          "appliance": "Appliance",
+          "ups": "UPS"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "machine_type": {
+        "name": "Machine type",
+        "state": {
+          "grid_tie": "Grid-tie",
+          "off_grid": "Off-grid",
+          "hybrid": "Hybrid"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "topology": {
+        "name": "Topology",
+        "state": {
+          "transformerless": "Transformerless",
+          "transformer": "Transformer"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      },
+      "output_mode": {
+        "name": "Output mode",
+        "state": {
+          "single": "Single",
+          "parallel": "Parallel"
+        },
+        "state_attributes": {
+          "code": {
+            "name": "Code"
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "ac_output_active": {
+        "name": "AC output"
+      },
+      "load_on": {
+        "name": "Load on"
+      },
+      "charging": {
+        "name": "Charging"
+      },
+      "solar_charging": {
+        "name": "Solar charging"
+      },
+      "grid_charging": {
+        "name": "Grid charging"
+      },
+      "charging_to_float": {
+        "name": "Charging to float"
+      },
+      "sbu_priority": {
+        "name": "SBU priority"
+      },
+      "fault": {
+        "name": "Fault",
+        "state_attributes": {
+          "faults": {
+            "name": "Faults"
+          },
+          "fault_mode": {
+            "name": "Fault mode"
+          }
+        }
+      },
+      "warning": {
+        "name": "Warning",
+        "state_attributes": {
+          "warnings": {
+            "name": "Warnings"
+          }
+        }
+      },
+      "inverter_fault": {
+        "name": "Inverter fault"
+      },
+      "bus_over": {
+        "name": "Bus over-voltage"
+      },
+      "bus_under": {
+        "name": "Bus under-voltage"
+      },
+      "bus_soft_fail": {
+        "name": "Bus soft-start failed"
+      },
+      "line_fail": {
+        "name": "Grid lost"
+      },
+      "opv_short": {
+        "name": "Output short circuit"
+      },
+      "inverter_voltage_too_low": {
+        "name": "Inverter voltage too low"
+      },
+      "inverter_voltage_too_high": {
+        "name": "Inverter voltage too high"
+      },
+      "over_temperature": {
+        "name": "Over-temperature"
+      },
+      "fan_locked": {
+        "name": "Fan locked"
+      },
+      "battery_voltage_high": {
+        "name": "Battery voltage high"
+      },
+      "battery_low_alarm": {
+        "name": "Battery low"
+      },
+      "battery_under_shutdown": {
+        "name": "Battery under-voltage shutdown"
+      },
+      "battery_derating": {
+        "name": "Battery derating"
+      },
+      "overload": {
+        "name": "Overload"
+      },
+      "eeprom_fault": {
+        "name": "EEPROM fault"
+      },
+      "inverter_over_current": {
+        "name": "Inverter over-current"
+      },
+      "inverter_soft_fail": {
+        "name": "Inverter soft-start failed"
+      },
+      "self_test_fail": {
+        "name": "Self-test failed"
+      },
+      "op_dc_voltage_over": {
+        "name": "DC voltage on output"
+      },
+      "battery_open": {
+        "name": "Battery not connected"
+      },
+      "current_sensor_fail": {
+        "name": "Current sensor failed"
+      },
+      "battery_short": {
+        "name": "Battery short circuit"
+      },
+      "power_limit": {
+        "name": "Power limit"
+      },
+      "pv_voltage_high": {
+        "name": "PV voltage high"
+      },
+      "mppt_overload_fault": {
+        "name": "MPPT overload fault"
+      },
+      "mppt_overload_warning": {
+        "name": "MPPT overload warning"
+      },
+      "battery_too_low_to_charge": {
+        "name": "Battery too low to charge"
+      },
+      "dc_dc_over_current": {
+        "name": "DC/DC over-current"
+      },
+      "flag_buzzer": {
+        "name": "Buzzer"
+      },
+      "flag_overload_bypass": {
+        "name": "Overload bypass"
+      },
+      "flag_power_saving": {
+        "name": "Power saving"
+      },
+      "flag_lcd_return_to_default": {
+        "name": "Return to default LCD screen"
+      },
+      "flag_overload_restart": {
+        "name": "Auto restart on overload"
+      },
+      "flag_over_temperature_restart": {
+        "name": "Auto restart on over-temperature"
+      },
+      "flag_backlight": {
+        "name": "LCD backlight"
+      },
+      "flag_primary_source_interrupt_alarm": {
+        "name": "Beep on primary source interrupt"
+      },
+      "flag_fault_code_record": {
+        "name": "Record fault codes"
+      }
+    },
+    "switch": {
+      "buzzer": {
+        "name": "Buzzer"
+      },
+      "overload_bypass": {
+        "name": "Overload bypass"
+      },
+      "power_saving": {
+        "name": "Power saving"
+      },
+      "lcd_return_to_default": {
+        "name": "Return to default LCD screen"
+      },
+      "overload_restart": {
+        "name": "Auto restart on overload"
+      },
+      "over_temperature_restart": {
+        "name": "Auto restart on over-temperature"
+      },
+      "backlight": {
+        "name": "LCD backlight"
+      },
+      "primary_source_interrupt_alarm": {
+        "name": "Beep on primary source interrupt"
+      },
+      "fault_code_record": {
+        "name": "Record fault codes"
+      }
+    },
+    "select": {
+      "output_source_priority": {
+        "name": "Output source priority",
+        "state": {
+          "sbu": "SBU (solar → battery → utility)"
+        }
+      },
+      "charger_source_priority": {
+        "name": "Charger source priority",
+        "state": {
+          "only_solar": "Only solar"
+        }
+      }
+    },
+    "number": {
+      "max_charging_current": {
+        "name": "Max charging current"
+      },
+      "max_ac_charging_current": {
+        "name": "Max utility charging current"
+      },
+      "battery_recharge_voltage": {
+        "name": "Back to utility voltage"
+      },
+      "battery_redischarge_voltage": {
+        "name": "Back to battery voltage"
+      },
+      "battery_under_voltage": {
+        "name": "Battery cut-off voltage"
+      },
+      "battery_bulk_voltage": {
+        "name": "Battery bulk voltage"
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Cannot read the inverter: {error}"
+    },
+    "update_failed": {
+      "message": "Error communicating with the inverter: {error}"
+    },
+    "invalid_value": {
+      "message": "Invalid value: {error}"
+    },
+    "command_rejected": {
+      "message": "The inverter rejected the command {command} (NAK)."
+    },
+    "command_failed": {
+      "message": "Sending {command} failed: {error}"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# Protocol tests need only pytest; the Home Assistant tests (tests/test_ha_*.py)
+# need the HA test harness, which pins a matching homeassistant version.
+pytest
+pytest-homeassistant-custom-component

@@ -13,15 +13,17 @@ This skill updates project docs after a chat session that added or changed code.
 
 Look at the conversation and git diff to find:
 - New files created or renamed
-- New endpoints, components, modules, data models
+- New or changed entities (sensors, binary sensors), inverter commands/fields parsed, modules, data models
 - Architecture changes (data flow, new integrations, changed interfaces)
-- New configuration keys or environment variables
+- New configuration keys (config flow options, `manifest.json`, `hacs.json`)
+- New user wishes, decisions, or findings about the inverter (go to `docs/project-overview.md` / `docs/inverter-protocol.md`)
 
 ### 2. Bootstrap missing docs (if they don't exist yet)
 
-**`README.md`** - if missing, create it with:
-- One-paragraph project description
-- How to run (install, start)
+**`README.md`** - the public GitHub page of the HACS integration. If missing, create it with:
+- One-paragraph project description and supported hardware
+- HACS install steps, configuration (config flow), list of entities
+- Limitations (e.g. read-only)
 - Documentation table (links to `docs/*.md`)
 
 **`docs/code-map.md`** - if missing, create it: a table of every non-trivial file with a one-line description and its role. Purpose: let a reader find the right file to edit without grepping.
@@ -31,14 +33,15 @@ Look at the conversation and git diff to find:
 **`docs/code-map.md`** - for any new, renamed, or repurposed file: add or update its row.
 
 **Other docs in `docs/`** - update the doc that covers the area you changed:
-- New API endpoint -> endpoints/API doc
-- New config key -> settings/config doc
-- Schema change -> data-model doc
+- New/changed entity or parsed field -> `docs/inverter-protocol.md` (field map) and the entity list in `README.md`
+- New config key -> `README.md` configuration section
+- Inverter capability/setting facts -> `docs/inverter-vevor-gd5548jmh.md`
+- User wishes, decisions, roadmap -> `docs/project-overview.md`
 - New subsystem -> relevant architecture doc
 
 **Create a new `docs/<topic>.md`** if a changed area has no doc yet and warrants one: 3+ files involved, non-obvious data flow, or an area where future edits require upfront context. Do not create a doc for a single-function fix or UI tweak.
 
-**`README.md`** - add any newly created doc to the Documentation table.
+**`README.md`** and **`docs/README.md`** - add any newly created doc to the Documentation tables.
 
 ### 4. Fix search gaps (always do this)
 
@@ -57,6 +60,8 @@ For each gap: add the missing fact to the relevant doc - 1-3 sentences or a tabl
 
 **What to omit:** implementation details readable from the source, parameter-by-parameter descriptions, anything that would need updating every commit.
 
-**Format:** tables for schemas/config/file maps, short ASCII flows for request paths, relative file links (`../src/...`). Match existing style.
+**Format:** tables for schemas/config/file maps, short ASCII flows for request paths, relative file links (`../custom_components/...`). Match existing style.
 
-**After editing:** verify every file path in the doc actually exists. Do not update `AGENTS.md` or `CLAUDE.md` with code facts.
+**Language:** all docs are written in English.
+
+**After editing:** verify every file path in the doc actually exists. Do not update `AGENTS.md` or `CLAUDE.md` with code facts. Never document or edit the reference example integrations in `custom_components/` (official HA examples) other than listing them in the code map.

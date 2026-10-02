@@ -1,6 +1,6 @@
 ---
 name: session-retro
-description: End-of-session retrospective for AI-assisted (vibe-coding) work. Reviews the just-finished chat for friction - slow searches, ambiguity, rework, wasted tokens - and fixes the systemic causes (doc gaps, oversized/tangled files, missing tests around non-trivial or paid-external-API code) so future sessions on this repo are faster and cheaper. Run manually after a chat that made substantial changes.
+description: End-of-session retrospective for AI-assisted (vibe-coding) work. Reviews the just-finished chat for friction - slow searches, ambiguity, rework, wasted tokens - and fixes the systemic causes (doc gaps, oversized/tangled files, missing tests around non-trivial or inverter-protocol code) so future sessions on this repo are faster and cheaper. Run manually after a chat that made substantial changes.
 ---
 
 # Session Retrospective
@@ -32,9 +32,11 @@ each with a root cause. Look for:
   config that wasn't discoverable.
 - **Large, tangled files**: any file you had to read in full or partially just to
   find the few lines relevant to the task, because responsibilities were mixed.
-- **Risky code with no safety net**: non-trivial logic - especially calls to
-  external paid services (request building, response parsing, format conversion) -
+- **Risky code with no safety net**: non-trivial logic - especially inverter protocol
+  code (command framing, CRC, response parsing, field mapping, status-bit decoding) -
   that has no tests, so correctness relied on manual inspection or lucky guessing.
+- **Safety-rule friction**: anything that tempted or required touching the inverter
+  beyond read-only `Q` queries (see `AGENTS.md` section 0).
 
 For each item, write one line: *what happened -> why it happened -> what class of
 future session it would also slow down.* Discard anything that's a one-off,
@@ -48,12 +50,12 @@ Apply directly, without asking, when the fix is small, safe, and unambiguous:
 - Add a short note documenting a convention that had to be inferred (e.g. "config
   keys live in X", "external API responses are normalized in Y before storage").
 - Add tests for non-trivial logic that was touched this session and has no
-  coverage, in particular anything that builds requests to, or parses responses
-  from, external paid services - mock the external call, never hit the real
-  service in tests.
+  coverage, in particular anything that builds commands for, or parses responses
+  from, the inverter - use recorded sample responses, never hit the real
+  inverter in tests.
 
-Match existing test framework/conventions already used in the repo; don't
-introduce a new one.
+Match existing test framework/conventions already used in the repo; if none
+exists yet, use `pytest` (see `AGENTS.md` section 4).
 
 ## Step 4 - Propose what's not clear-cut
 
@@ -86,5 +88,4 @@ report.
 
 Write this final report in Russian, regardless of what language the rest of the
 session was conducted in. This applies only to the Step 5 report text itself -
-code, comments, docs, and everything else this skill touches stay in whatever
-language the project already uses.
+code, comments, docs, and everything else this skill touches stay in English.

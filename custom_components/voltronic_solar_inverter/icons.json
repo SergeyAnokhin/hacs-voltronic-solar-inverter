@@ -1,0 +1,24 @@
+{
+  "entity": {
+    "sensor": {
+      "device_mode": { "default": "mdi:state-machine" },
+      "load_percent": { "default": "mdi:gauge" },
+      "battery_capacity_estimate": { "default": "mdi:battery-unknown" },
+      "pv_charging_power": { "default": "mdi:solar-power" },
+      "pv_input_voltage": { "default": "mdi:solar-panel" },
+      "pv_input_current": { "default": "mdi:solar-panel" },
+      "output_source_priority": { "default": "mdi:transmission-tower-export" },
+      "charger_source_priority": { "default": "mdi:battery-charging" },
+      "battery_type": { "default": "mdi:car-battery" },
+      "serial_number": { "default": "mdi:identifier" },
+      "firmware_version": { "default": "mdi:chip" }
+    },
+    "binary_sensor": {
+      "sbu_priority": { "default": "mdi:solar-power-variant" }
+    },
+    "select": {
+      "output_source_priority": { "default": "mdi:transmission-tower-export" },
+      "charger_source_priority": { "default": "mdi:battery-charging" }
+    }
+  }
+}

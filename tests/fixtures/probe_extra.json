@@ -1,0 +1,111 @@
+{
+  "host": "192.168.1.47",
+  "taken_at": "2026-10-02 19:23:33",
+  "stream": {
+    "QPI": {
+      "raw_hex": "28504933309a0b0d",
+      "text": "PI30",
+      "crc_ok": true,
+      "seconds": 0.235,
+      "error": null
+    },
+    "QGMN": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QMN": {
+      "raw_hex": "28564d49492d34303030683a0d",
+      "text": "VMII-4000",
+      "crc_ok": true,
+      "seconds": 0.203,
+      "error": null
+    },
+    "QSID": {
+      "raw_hex": "283134353533353535333535353335353533353535333518180d",
+      "text": "1455355535553555355535",
+      "crc_ok": true,
+      "seconds": 0.25,
+      "error": null
+    },
+    "QDI": {
+      "raw_hex": "283233302e302035302e3020303033302032312e302032372e302032382e322032332e30203530203020302032203020302030203020302031203120312030203120302032372e302030203143b80d",
+      "text": "230.0 50.0 0030 21.0 27.0 28.2 23.0 50 0 0 2 0 0 0 0 0 1 1 1 0 1 0 27.0 0 1",
+      "crc_ok": true,
+      "seconds": 0.469,
+      "error": null
+    },
+    "QBEQI": {
+      "raw_hex": "2830203036302030333020303530203033302032392e3230203030302031323020302030303030290c0d",
+      "text": "0 060 030 050 030 29.20 000 120 0 0000",
+      "crc_ok": true,
+      "seconds": 0.343,
+      "error": null
+    },
+    "QMCHGCR": {
+      "raw_hex": "2830313020303230203033302030343020303530203036302030373020303830914c0d",
+      "text": "010 020 030 040 050 060 070 080",
+      "crc_ok": true,
+      "seconds": 0.328,
+      "error": null
+    },
+    "QMUCHGCR": {
+      "raw_hex": "28303032203031302030323020303330203034302030353020303630ac5f0d",
+      "text": "002 010 020 030 040 050 060",
+      "crc_ok": true,
+      "seconds": 0.328,
+      "error": null
+    },
+    "QOPM": {
+      "raw_hex": "2830301ca10d",
+      "text": "00",
+      "crc_ok": true,
+      "seconds": 0.188,
+      "error": null
+    },
+    "QPGS0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QFS": {
+      "raw_hex": "283030203030203030203030303020303030302030303030203030302e302030302e3030203030302e302030302e3030203030302e30203030302e302030302e3020303030203030307fb30d",
+      "text": "00 00 00 0000 0000 0000 000.0 00.00 000.0 00.00 000.0 000.0 00.0 000 000",
+      "crc_ok": true,
+      "seconds": 0.469,
+      "error": null
+    },
+    "QLED": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QBOOT": {
+      "raw_hex": "2830b91c0d",
+      "text": "0",
+      "crc_ok": true,
+      "seconds": 0.187,
+      "error": null
+    },
+    "QPIGS2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QMOD": {
+      "raw_hex": "2842e7c90d",
+      "text": "B",
+      "crc_ok": true,
+      "seconds": 0.172,
+      "error": null
+    }
+  }
+}

@@ -1,0 +1,560 @@
+{
+  "host": "192.168.1.47",
+  "note": "Candidate Q commands probed one per connection (timeout 1.0 s, 1 s pause), mode B, PV off, grid present",
+  "stream": {
+    "QCST": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QCVT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QMSCHGCR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QVFW3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QVFW4": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPGS1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QP2GS0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QDOP": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QBATCD": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPIBI": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QALL": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QLITH0": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QMD": {
+      "raw_hex": "282323232323494e564552544558334b202323233330303020393920312f3120323330203233302030322031322e3087d30d",
+      "text": "#####INVERTEX3K ###3000 99 1/1 230 230 02 12.0",
+      "crc_ok": true,
+      "seconds": 0.375,
+      "error": null
+    },
+    "QTPR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPICF": {
+      "raw_hex": "284e414b73730d",
+      "text": "NAK",
+      "crc_ok": true,
+      "seconds": 0.204,
+      "error": null
+    },
+    "QPIHF00": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPIHF01": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QCHGS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QGOV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QGOF": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QOPMP": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QMPPTV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPVIPV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QLST": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QDI2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QGLTV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QVFTR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QEH2026100219": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QGS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QWS": {
+      "raw_hex": "2830303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030ecae0d",
+      "text": "0000000000000000000000000000000000000000000000000000000000000000",
+      "crc_ok": true,
+      "seconds": 0.422,
+      "error": null
+    },
+    "QRI": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QBV": {
+      "raw_hex": "2832352e36203039352010390d",
+      "text": "25.6 095 ",
+      "crc_ok": true,
+      "seconds": 0.219,
+      "error": null
+    },
+    "QS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QBT": {
+      "raw_hex": "2830323ce30d",
+      "text": "02",
+      "crc_ok": true,
+      "seconds": 0.172,
+      "error": null
+    },
+    "QMF": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPD": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.079,
+      "error": "timeout"
+    },
+    "QHE": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QFRE": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPAR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QLDL": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QGR": {
+      "raw_hex": "2830301ca10d",
+      "text": "00",
+      "crc_ok": true,
+      "seconds": 0.203,
+      "error": null
+    },
+    "QBYV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.079,
+      "error": "timeout"
+    },
+    "QBYF": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QBDR": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QBAT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QBCV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QBCHGS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QWFS": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QOPCHT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QSK1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QSK2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QSK3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QSK4": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QSKT1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QSKT2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "Q3PV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "Q3PC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.047,
+      "error": "timeout"
+    },
+    "Q3OV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "Q3OC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "Q3LD": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "Q3YV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPIHF": {
+      "raw_hex": "284e414b73730d",
+      "text": "NAK",
+      "crc_ok": true,
+      "seconds": 0.234,
+      "error": null
+    },
+    "QPIHF1": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPIHF02": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QDAT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QTIME": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QCLK": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QRTC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QTM": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QSCH": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QTIMER": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPIRI2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QPIGS3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPIWS2": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QDI3": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPIZZ": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.078,
+      "error": "timeout"
+    },
+    "QPIAB": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.063,
+      "error": "timeout"
+    },
+    "QPIZ": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.062,
+      "error": "timeout"
+    },
+    "QPIZZZ": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.079,
+      "error": "timeout"
+    }
+  },
+  "taken_at": "2026-10-02 19:49:34"
+}

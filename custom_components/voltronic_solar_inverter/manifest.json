@@ -1,0 +1,14 @@
+{
+  "domain": "voltronic_solar_inverter",
+  "name": "Voltronic Solar Inverter",
+  "codeowners": ["@SergeyAnokhin"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/SergeyAnokhin/hacs-voltronic-solar-inverter",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/SergeyAnokhin/hacs-voltronic-solar-inverter/issues",
+  "loggers": ["custom_components.voltronic_solar_inverter"],
+  "requirements": [],
+  "version": "0.1.0"
+}
