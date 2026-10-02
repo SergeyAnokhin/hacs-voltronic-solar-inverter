@@ -1,3 +1,5 @@
+<img width="529" height="257" alt="logo" src="https://github.com/user-attachments/assets/a0a62a12-628b-46b5-ac83-cf6498b8cf57" />
+
 # Voltronic/Vevor Solar Inverter for Home Assistant (HACS)
 
 <img width="225" height="300" alt="image" src="https://github.com/user-attachments/assets/ea0d73d1-ee7d-422f-8414-9d203093059d" />
