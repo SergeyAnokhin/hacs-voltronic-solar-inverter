@@ -6,7 +6,7 @@ Behavioral guidelines for AI agents working in this repository (a Home Assistant
 
 - **Never send any command that changes inverter state or settings to the real device.** This includes all setter commands (`PO…`, `PF`, `PCP`, `PGR`, `PBT`, `POP`, `PSDV`, `MUCHGC`, `MCHGC`, `PE…`/`PD…`, `PBCV`, `PBDV`, `PCVV`, `PBFT`, `DAT`, `F50`/`F60`, reset, power on/off, etc.) and anything not on the allow-list below.
 - Allowed on the live device: **query commands only**: names starting with `Q` (with CRC, e.g. `QPIGS`, `QPIRI`, `QPIWS`, `QMOD`, `QFLAG`, `QID`, `QVFW`) and the owner-approved read-only Solar Plug **H** queries sent without CRC (`QPRTL HSTS HGRID HOP HBAT HPV HPVB HTEMP HGEN HIMSG1 HBMS1 HBMS2 HBMS3 HEEP1 HEEP2`; exact allow-lists in `protocol/commands.py` `PLAIN_QUERIES` and `tools/probe_inverter.py`). Probing for *new* `Q…` commands is allowed only one at a time, and only if the user asked for protocol research. The gateway serves one client: query only as often as needed.
-- **Write code exists** (owner's decision, 2026-10-02): setting commands are built and validated in [`protocol/commands.py`](custom_components/voltronic_solar_inverter/protocol/commands.py) and exposed by switch/select/number entities that are **created only when the owner turns on the "Enable control entities" option (default off)**. The agent may change this code and its tests when asked, but tests use a fake transport only (`tests/conftest.py` `FakeGateway`); a write command is never sent to the real inverter by the agent. **Only the owner tests writes on the real device.**
+- **Write code exists** (owner's decision, 2026-10-02): setting commands are built and validated in [`protocol/commands.py`](custom_components/voltronic_solar_inverter/protocol/commands.py) and exposed by switch/select/number entities that are **always created** (owner's decision, 2026-10-02; README warns that changes are at the user's risk). The agent may change this code and its tests when asked, but tests use a fake transport only (`tests/conftest.py` `FakeGateway`); a write command is never sent to the real inverter by the agent. **Only the owner tests writes on the real device.**
 - Do not add new write commands, or publish setting values marked unverified, without the owner's explicit request in chat.
 - Never run the live inverter code in a loop/flood; keep a pause between commands (the integration uses 0.1 s on one persistent connection; the prototype uses 0.3 s).
 
@@ -30,7 +30,7 @@ For multi-step work, define a short verification-driven plan:
 
 - Make the smallest change that fully solves the task.
 - Do not add features, abstractions, or configurability that were not requested.
-- Match the local style of the file you are editing (for HA code: follow patterns of the reference integrations in `custom_components/`).
+- Match the local style of the file you are editing (for HA code: follow the existing integration code and current Home Assistant developer docs).
 - Do not refactor adjacent code unless the task requires it.
 - Remove only the unused code created by your own change.
 - If you notice unrelated problems, mention them instead of fixing them opportunistically.
@@ -44,11 +44,10 @@ Before any non-trivial task:
 1. Read [`README.md`](README.md).
 2. Read [`docs/README.md`](docs/README.md) (index) and then only the doc(s) relevant to the area you are changing — [`docs/code-map.md`](docs/code-map.md) first to locate files.
 
-Do not read the whole repo or the large reference integrations when a doc already answers the question.
+Do not read the whole repo when a doc already answers the question.
 
 ### Reference material (do not edit)
 
-- `custom_components/<example_*|hello_world*|expose_service_*|mqtt_basic_*|detailed_hello_world_push>` — official Home Assistant example integrations, kept only as patterns. **Never modify them**; read them only when you need a pattern (config flow, coordinator, sensor platform, manifest).
 - `python_scripts/get_inverter_info.py` — the working prototype that talks to the inverter; the source of truth for the protocol details currently used. `counter.py` and `count_people_home.py` are unrelated HA examples.
 - The vendor PDF manual has been distilled into [`docs/inverter-vevor-gd5548jmh.md`](docs/inverter-vevor-gd5548jmh.md); use that instead of the PDF.
 
@@ -106,7 +105,7 @@ Rules:
 
 - Target platform: Home Assistant custom integration installable through HACS. The integration domain must be a valid Python identifier (`voltronic_solar_inverter`, underscores — not hyphens); layout `custom_components/<domain>/` + root `hacs.json`.
 - Follow current Home Assistant conventions: config flow, `DataUpdateCoordinator`, `async` I/O (no blocking sockets in the event loop), `unique_id`s, device registry, proper `device_class` / `state_class` / units for sensors.
-- Read entities are sensors / binary sensors. Control entities (switch/select/number) exist but are only set up when the "Enable control entities" option is on (see section 0).
+- Read entities are sensors / binary sensors. Control entities (switch/select/number) are always set up (see section 0).
 - Keep protocol logic (framing, CRC, parsing) separate from Home Assistant glue so it can be unit-tested without HA.
 
 ## 6. Language

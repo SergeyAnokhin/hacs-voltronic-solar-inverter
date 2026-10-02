@@ -10,9 +10,6 @@
       "battery_capacity_estimate": {
         "default": "mdi:battery-unknown"
       },
-      "pv_charging_power": {
-        "default": "mdi:solar-power"
-      },
       "pv_input_voltage": {
         "default": "mdi:solar-panel"
       },
@@ -63,6 +60,12 @@
       },
       "fan_2_speed": {
         "default": "mdi:fan"
+      },
+      "pv_power_raw": {
+        "default": "mdi:solar-power"
+      },
+      "pv_power": {
+        "default": "mdi:solar-power-variant-outline"
       }
     },
     "binary_sensor": {

@@ -23,7 +23,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from conftest import FakeGateway, answered, plain_answered
 from custom_components.voltronic_solar_inverter import diagnostics
 from custom_components.voltronic_solar_inverter.const import (
-    CONF_ENABLE_CONTROLS,
     CONF_FAST_INTERVAL,
     CONF_SLOW_INTERVAL,
     DOMAIN,
@@ -120,18 +119,20 @@ def inverter():
         yield inv
 
 
-def make_entry(controls: bool = False) -> MockConfigEntry:
+def make_entry(minor_version: int = 2) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
+        version=1,
+        minor_version=minor_version,
         title="Inverter VMII-4000",
         unique_id=SERIAL,
         data={CONF_HOST: "192.0.2.10", CONF_PORT: 8899},
-        options={CONF_FAST_INTERVAL: 10, CONF_SLOW_INTERVAL: 60, CONF_ENABLE_CONTROLS: controls},
+        options={CONF_FAST_INTERVAL: 10, CONF_SLOW_INTERVAL: 60},
     )
 
 
-async def setup(hass: HomeAssistant, controls: bool = False) -> MockConfigEntry:
-    entry = make_entry(controls)
+async def setup(hass: HomeAssistant) -> MockConfigEntry:
+    entry = make_entry()
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -155,7 +156,6 @@ async def test_user_flow_creates_entry(hass: HomeAssistant, inverter: Inverter) 
     assert result["options"] == {
         CONF_FAST_INTERVAL: 15,
         CONF_SLOW_INTERVAL: 120,
-        CONF_ENABLE_CONTROLS: False,
     }
     assert result["result"].unique_id == SERIAL
     assert inverter.gateway.sent == [encode_frame(c) for c in ("QPI", "QMN", "QID")]
@@ -211,10 +211,10 @@ async def test_setup_creates_read_only_entities(hass: HomeAssistant, inverter: I
     registry = er.async_get(hass)
     estimate = registry.async_get(f"sensor.{PREFIX}_battery_level_estimate_voltage_based")
     assert estimate is not None and estimate.disabled_by is not None
-    # No control entities unless enabled.
+    # Control entities always exist (changes are at the user's risk).
     domains = {e.domain for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
-    assert domains == {"sensor", "binary_sensor"}
-    # Only queries were sent.
+    assert domains == {"sensor", "binary_sensor", "number", "select", "switch"}
+    # Setting up sends only queries.
     assert inverter.writes == []
 
 
@@ -269,37 +269,26 @@ async def test_unload_closes_connection(hass: HomeAssistant, inverter: Inverter)
 # --- control entities ----------------------------------------------------------------
 
 
-async def test_options_flow_enables_controls(hass: HomeAssistant, inverter: Inverter) -> None:
+async def test_options_flow_changes_intervals(hass: HomeAssistant, inverter: Inverter) -> None:
     entry = await setup(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {CONF_FAST_INTERVAL: 20, CONF_SLOW_INTERVAL: 300, CONF_ENABLE_CONTROLS: True},
+        result["flow_id"], {CONF_FAST_INTERVAL: 2, CONF_SLOW_INTERVAL: 300}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert entry.options[CONF_ENABLE_CONTROLS] is True
+    assert entry.options == {CONF_FAST_INTERVAL: 2, CONF_SLOW_INTERVAL: 300}
+    assert entry.runtime_data.fast.update_interval.total_seconds() == 2
     assert hass.states.get(f"switch.{PREFIX}_buzzer") is not None
     select = hass.states.get(f"select.{PREFIX}_output_source_priority")
     assert select.attributes["options"] == ["sbu"]
-
-    # Turning controls off again removes the entities from the registry.
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {CONF_FAST_INTERVAL: 20, CONF_SLOW_INTERVAL: 300, CONF_ENABLE_CONTROLS: False},
-    )
-    await hass.async_block_till_done()
-    registry = er.async_get(hass)
-    domains = {e.domain for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
-    assert domains == {"sensor", "binary_sensor"}
     assert inverter.writes == []
 
 
 async def test_switch_sends_flag_command_and_refreshes(
     hass: HomeAssistant, inverter: Inverter
 ) -> None:
-    await setup(hass, controls=True)
+    await setup(hass)
     entity_id = f"switch.{PREFIX}_buzzer"
     assert hass.states.get(entity_id).state == STATE_ON
     sent_before = len(inverter.gateway.sent)
@@ -314,7 +303,7 @@ async def test_switch_sends_flag_command_and_refreshes(
 
 
 async def test_switch_nak_raises(hass: HomeAssistant, inverter: Inverter) -> None:
-    await setup(hass, controls=True)
+    await setup(hass)
     inverter.write_answer = "NAK"
     with pytest.raises(HomeAssistantError, match="rejected"):
         await hass.services.async_call(
@@ -324,7 +313,7 @@ async def test_switch_nak_raises(hass: HomeAssistant, inverter: Inverter) -> Non
 
 
 async def test_select_sends_verified_code(hass: HomeAssistant, inverter: Inverter) -> None:
-    await setup(hass, controls=True)
+    await setup(hass)
     await hass.services.async_call(
         "select",
         "select_option",
@@ -343,7 +332,7 @@ async def test_select_sends_verified_code(hass: HomeAssistant, inverter: Inverte
 
 
 async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:
-    await setup(hass, controls=True)
+    await setup(hass)
     charge = hass.states.get(f"number.{PREFIX}_max_charging_current")
     assert charge.state == "50"
     assert (charge.attributes["min"], charge.attributes["max"], charge.attributes["step"]) == (10, 80, 10)
@@ -393,8 +382,14 @@ async def test_h_dialect_entities(hass: HomeAssistant, inverter: Inverter) -> No
     assert state(f"sensor.{PREFIX}_transformer_temperature").state == "32"
     assert state(f"sensor.{PREFIX}_grid_power").state == "0"
     assert state(f"sensor.{PREFIX}_battery_low_alarm_voltage").state == "22.0"
-    assert state(f"sensor.{PREFIX}_equalization_voltage").state == "29.2"
-    assert state(f"binary_sensor.{PREFIX}_equalization").state == STATE_OFF
+    # Equalization is read but its entities are disabled by default.
+    registry = er.async_get(hass)
+    for entity_id in (
+        f"sensor.{PREFIX}_equalization_voltage",
+        f"binary_sensor.{PREFIX}_equalization",
+    ):
+        assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert state(entity_id) is None
     # 21:01 inverter local time; the test time zone is US/Pacific, states are UTC
     assert state(f"sensor.{PREFIX}_inverter_clock").state == "2026-10-03T04:01:00+00:00"
     assert state(f"sensor.{PREFIX}_inverter_clock_offset").state not in (None, STATE_UNAVAILABLE)
@@ -427,7 +422,7 @@ async def test_inverter_without_h_dialect(hass: HomeAssistant, inverter: Inverte
 
 
 async def test_select_solar_supply_priority(hass: HomeAssistant, inverter: Inverter) -> None:
-    await setup(hass, controls=True)
+    await setup(hass)
     entity_id = f"select.{PREFIX}_solar_supply_priority"
     select = hass.states.get(entity_id)
     assert select.state == "load_first"
@@ -436,6 +431,103 @@ async def test_select_solar_supply_priority(hass: HomeAssistant, inverter: Inver
         "select", "select_option", {"entity_id": entity_id, "option": "battery_first"}, blocking=True
     )
     assert inverter.writes == ["PVENGUSE00"]
+
+
+# --- live / smoothed sensors, defaults, migration ----------------------------------
+
+
+def qpigs_with_pv_power(watts: int) -> str:
+    fields = FULL["QPIGS"].split()
+    fields[19] = f"{watts:05d}"
+    return " ".join(fields)
+
+
+async def test_pv_power_raw_and_smoothed(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.table["QPIGS"] = qpigs_with_pv_power(1000)
+    entry = await setup(hass)
+    live_id = f"sensor.{PREFIX}_pv_power_raw"
+    smooth_id = f"sensor.{PREFIX}_pv_power"
+    assert hass.states.get(live_id).state == "1000"
+    assert hass.states.get(smooth_id).state == "1000"
+    first_write = hass.states.get(smooth_id).last_reported
+
+    async def poll(watts: int) -> None:
+        inverter.table["QPIGS"] = qpigs_with_pv_power(watts)
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
+
+    # +4 %: the live value follows, the smoothed state is not even re-written.
+    await poll(1040)
+    assert hass.states.get(live_id).state == "1040"
+    assert hass.states.get(smooth_id).state == "1000"
+    assert hass.states.get(smooth_id).last_reported == first_write
+
+    # Clouds: mean of 1000, 1040, 300 = 780 (-22 %) -> published.
+    await poll(300)
+    assert hass.states.get(live_id).state == "300"
+    assert hass.states.get(smooth_id).state == "780"
+
+    # Unavailable together with the coordinator, back afterwards.
+    inverter.offline = True
+    await entry.runtime_data.fast.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(smooth_id).state == STATE_UNAVAILABLE
+    inverter.offline = False
+    await poll(300)
+    assert hass.states.get(smooth_id).state != STATE_UNAVAILABLE
+
+
+async def test_static_entities_hidden_by_default(hass: HomeAssistant, inverter: Inverter) -> None:
+    await setup(hass)
+    registry = er.async_get(hass)
+    for entity_id in (
+        f"sensor.{PREFIX}_firmware_version",
+        f"sensor.{PREFIX}_serial_number",
+        f"sensor.{PREFIX}_rated_output_power",
+        f"sensor.{PREFIX}_battery_rating_voltage",
+    ):
+        entity = registry.async_get(entity_id)
+        assert entity.hidden_by is er.RegistryEntryHider.INTEGRATION, entity_id
+        assert hass.states.get(entity_id) is not None  # still has a state
+    assert registry.async_get(f"sensor.{PREFIX}_battery_type").hidden_by is None
+
+
+async def test_migration_from_1_1(hass: HomeAssistant, inverter: Inverter) -> None:
+    entry = make_entry(minor_version=1)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+
+    def register(domain: str, key: str):
+        return registry.async_get_or_create(
+            domain,
+            DOMAIN,
+            f"{SERIAL}_{key}",
+            config_entry=entry,
+            suggested_object_id=f"{PREFIX}_{key}",
+        )
+
+    old_pv = register("sensor", "pv_charging_power")
+    firmware = register("sensor", "firmware_version")
+    eq_voltage = register("sensor", "equalization_voltage")
+    serial = register("sensor", "serial_number")
+    registry.async_update_entity(serial.entity_id, hidden_by=er.RegistryEntryHider.USER)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.minor_version == 2
+    # Renamed in place (same registry entry, so the recorder keeps its history).
+    assert registry.async_get(old_pv.entity_id) is None
+    new_pv = registry.async_get(f"sensor.{PREFIX}_pv_power")  # the smoothed, recorded one
+    assert new_pv.id == old_pv.id
+    assert new_pv.unique_id == f"{SERIAL}_pv_power"
+    assert registry.async_get(firmware.entity_id).hidden_by is er.RegistryEntryHider.INTEGRATION
+    assert (
+        registry.async_get(eq_voltage.entity_id).disabled_by
+        is er.RegistryEntryDisabler.INTEGRATION
+    )
+    # A choice the user made is kept.
+    assert registry.async_get(serial.entity_id).hidden_by is er.RegistryEntryHider.USER
 
 
 # --- diagnostics -----------------------------------------------------------------------

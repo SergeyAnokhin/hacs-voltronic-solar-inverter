@@ -1,6 +1,6 @@
 # LCD Settings Map (P01–P64): read sources and write commands
 
-For every LCD program of the Vevor GD5548JMH (see [inverter-vevor-gd5548jmh.md](inverter-vevor-gd5548jmh.md#3-lcd-settings-programs)), this page lists where its current value can be **read** over RS232 and which command is known to **write** it. Reads come from the PI30 dialect (`Q…` + CRC) and the CRC-less Solar Plug H dialect; both are described in [inverter-protocol.md](inverter-protocol.md). Values in the "Now" column were read on 2026-10-02 before the owner's test changes (at 21:45 the owner left P02 = 40 A, P12 = 22.5, P13 = 25.5, P26 = 29.1, P27 = 29.0, P29 = 21.7) and match the owner's Solar of Things screenshots ([`docs/screenshots/solar_of_things/`](screenshots/solar_of_things/)).
+For every LCD program of the Vevor GD5548JMH (see [inverter-vevor-gd5548jmh.md](inverter-vevor-gd5548jmh.md#3-lcd-settings-programs)), this page lists where its current value can be **read** over RS232 and which command is known to **write** it. Reads come from the PI30 dialect (`Q…` + CRC) and the CRC-less Solar Plug H dialect; both are described in [inverter-protocol.md](inverter-protocol.md). Values in the "Now" column were read on 2026-10-02 before the owner's test changes (at 21:45 the owner left P02 = 40 A, P12 = 22.5, P13 = 25.5, P26 = 29.1, P27 = 29.0, P29 = 21.7) and match the owner's Solar of Things screenshots (`docs/screenshots/solar_of_things/`, not in the repository).
 
 **Write commands are NOT tested by agents.** Agents never send them (see [AGENTS.md](../AGENTS.md)); the owner verifies each one on the real unit, one at a time, and reads the value back afterwards. A "Ref" write was ACKed on the sibling `VMII-6200` fw 40.05 in [solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome/blob/main/docs/protocol/WRITE_SURFACE.md). "Spec" means it appears in an official Voltronic protocol PDF but was not observed on a VMII unit. All write commands are sent **with** CRC-16/XMODEM (same framing as PI30 queries) and answer `(ACK` or `(NAK`.
 
@@ -67,7 +67,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 
 ## In the Home Assistant integration (0.2.0)
 
-Read (sensors): P01, P02, P03, P05, P06–P08, P11–P13, P16, P18–P20, P22–P27, P29, P30, P31, P33–P35, P43, P46/P47, P48/P49, the clock (P51–P55), and, disabled by default, P38, P40, P56 and the dual-output cut-off / recover voltage / recover delay. Written (only with the "Enable control entities" option, owner to test): P01 (`POP01` only), P02 (`MNCHGC`), P06/P07/P08/P18–P20/P22/P23/P25 (`PE`/`PD`), P11 (`MUCHGC`), P12 (`PBCV`), P13 (`PBDV`), P16 (`PCP02` only), P26 (`PCVV`), P29 (`PSDV`), P43 (`PVENGUSE`). Details: [integration.md](integration.md#entities).
+Read (sensors): P01, P02, P03, P05, P06–P08, P11–P13, P16, P18–P20, P22–P27, P29, P30, P31, P33–P35, P43, P46/P47, P48/P49, the clock (P51–P55), and, disabled by default, P38, P40, P56 and the dual-output cut-off / recover voltage / recover delay. Written (control entities, at the user's risk, owner to test): P01 (`POP01` only), P02 (`MNCHGC`), P06/P07/P08/P18–P20/P22/P23/P25 (`PE`/`PD`), P11 (`MUCHGC`), P12 (`PBCV`), P13 (`PBDV`), P16 (`PCP02` only), P26 (`PCVV`), P29 (`PSDV`), P43 (`PVENGUSE`). Details: [integration.md](integration.md#entities).
 
 ## Writing the AC output schedule (P48/P49)
 
@@ -78,6 +78,19 @@ No command for P46–P49 appears in any public Voltronic protocol (PI30, PI30MAX
 3. **Ask Vevor / Voltronic support** for the "VMII RS232 protocol" revision matching fw 00040.09, or capture the traffic of the vendor PC tool (WatchPower) if it exposes P48/P49.
 
 Note: on Voltronic units the AC-charger timer (P46/P47) is reset to 00:00 when the user enters menu 01 or 16 ([Voltacon knowledge base](https://blog.voltaconsolar.com/knowledge-base/why-does-the-inverter-reset-the-ac-charger-timers-to-0000/)). Check whether this unit does the same for P48/P49.
+
+### Safe search plan for a P46–P49 setter (owner's wish, 2026-10-02)
+
+Also checked on 2026-10-02: the official *Axpert KS&MKS&V RS232 Protocol* (2017-08-21) lists every PI30 setter and has no timer command, and the WatchPower manual's "Parameter Setting" page offers only flags, priorities, currents and voltages. The P46–P49 programs are probably a Vevor/Huahu firmware addition (this firmware is dated 2026-01-19, `HIMSG1`). Ordered from zero risk to the device to some risk:
+
+| # | Method | Risk to the inverter |
+|---|---|---|
+| 1 | Ask Vevor support for the RS232/Wi-Fi protocol of fw 00040.09 (`VMII-4000`, `HPVINV02`), naming programs 46–49 | none |
+| 2 | Offline string search in the vendor software: the Solar of Things Android APK (pulled from the owner's phone with `adb`, not from mirror sites) and, if Vevor provides one, the firmware update file. Command tables are plain ASCII (`QPIGS`, `PBCV`, `HEEP2`, …); a setter for the schedule would sit next to them | none (nothing is sent) |
+| 3 | Emulate the **charger** window from HA instead of P46/P47: automations that switch `PCP` (only solar ↔ solar + utility) or `MUCHGC` at the wanted hours, using already known commands | low, once `PCP`/`MUCHGC` are verified by the owner |
+| 4 | Live probing of guessed setter names | **not safe**: firmware often matches command prefixes, so a guess can hit another setter (`PF` = factory reset). Only if the owner decides explicitly, with candidates from step 1–2, a full settings snapshot (`QPIRI QFLAG QBEQI HEEP1 HEEP2 HEEP3` + LCD photos) before and after, and the owner sending the frames |
+
+The AC output on/off itself has no known alternative command; until a setter is found the output schedule stays read-only (`HEEP2[12]`).
 
 ## How to pin the "?" rows (owner-driven, read-only for the agent)
 

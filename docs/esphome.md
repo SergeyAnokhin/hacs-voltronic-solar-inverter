@@ -1,6 +1,6 @@
 # ESPHome on an ESP32 + MAX3232 (alternative to the Elfin gateway)
 
-The inverter's RS232 port can also be read by an ESP32 running ESPHome, connected through a MAX3232 RS232↔TTL level shifter. The folder [`esphome/`](../esphome/) holds two ready configurations: **native** ([`vevor-inverter.yaml`](../esphome/vevor-inverter.yaml)), where the ESP32 itself speaks PI30 through ESPHome's built-in [`pipsolar`](https://esphome.io/components/pipsolar/) component and publishes entities to Home Assistant over the ESPHome API, and **bridge** ([`vevor-bridge.yaml`](../esphome/vevor-bridge.yaml)), where the ESP32 is only a transparent RS232↔TCP bridge on port 8899 (drop-in for the Elfin gateway) and this repository's HACS integration keeps doing everything. Both configs pass `esphome config` (ESPHome 2026.9.1). Neither has been run on the real inverter yet.
+The inverter's RS232 port can also be read by an ESP32 running ESPHome, connected through a MAX3232 RS232↔TTL level shifter. The folder [`esphome/`](../esphome/) holds two ready configurations: **native** ([`vevor-inverter.yaml`](../esphome/vevor-inverter.yaml)), where the ESP32 itself speaks PI30 through ESPHome's built-in [`pipsolar`](https://esphome.io/components/pipsolar/) component and publishes entities to Home Assistant over the ESPHome API, and **bridge** ([`vevor-bridge.yaml`](../esphome/vevor-bridge.yaml)), where the ESP32 is only a transparent RS232↔TCP bridge on port 8899 (drop-in for the Elfin gateway) and this repository's HACS integration keeps doing everything. Both configs pass `esphome config` and compile (ESPHome 2026.9.1, native with the controls package enabled). Neither has been run on the real inverter yet.
 
 ## Which one to use
 
@@ -9,28 +9,18 @@ The inverter's RS232 port can also be read by an ESP32 running ESPHome, connecte
 | Needs the HACS integration | no (ESPHome integration only) | yes, host = ESP32 IP, port 8899 |
 | Protocol | PI30 only: `QPIGS`, `QPIRI`, `QMOD`, `QFLAG`, `QPIWS` | everything the integration does: PI30 + Solar Plug H dialect |
 | PV energy counters, inverter clock, P46–P49 schedules, temperatures `HTEMP`, `Q1`, `QBEQI` | **no** (not in `pipsolar`; compute energy in HA with an Integral helper on "PV charging power") | yes |
-| Writes | opt-in package [`packages/vevor-controls.yaml`](../esphome/packages/vevor-controls.yaml) | the integration's "Enable control entities" option |
+| Writes | opt-in package [`packages/vevor-controls.yaml`](../esphome/packages/vevor-controls.yaml) | the integration: always on (README caution) |
 | Extra component | none (core ESPHome) | [`oxan/esphome-stream-server`](https://github.com/oxan/esphome-stream-server) (external) |
 
 A third option is the external [solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome) component (H dialect, energy counters, beta writes). It was built on a 48 V PowMr VMII-6200; its write value ranges are for 48 V, so it is not configured here.
 
 ## Wiring
 
-```text
-ESP32 (3.3 V)          MAX3232 module               Inverter RJ45 "RS232"
--------------          ---------------              ---------------------
-3V3  ----------------> VCC  (power it from 3.3 V, not 5 V: its TTL output feeds ESP32 RX)
-GND  ----------------> GND  ---- RS232 GND -------> GND
-GPIO17 (TX) ---------> TXD / T1IN   T1OUT --------> inverter RX
-GPIO16 (RX) <--------- RXD / R1OUT  R1IN  <-------- inverter TX
-```
+Full build guide with parts list, pin tables, how to find the RJ45 pins, first test and troubleshooting: [esphome-hardware.md](esphome-hardware.md).
 
-- **Never** wire the inverter port straight to ESP32 pins: RS232 swings to about ±12 V.
-- The RJ45 pinout of the GD5548JMH is **not documented** in the manual. Known pinouts of related units: classic Voltronic/Axpert pin 1 = TX, pin 2 = RX, pin 8 = GND; the VMII-based PowMr HVM (sibling of this unit) pin 3 = RX, pin 6 = TX, pin 4/5 = GND, and pin 2 may carry +12 V for the dongle. The simplest path is to reuse the RJ45→DB9 cable that already works with the Elfin gateway (a DB9 gender changer may be needed).
-- To find TX with a multimeter (inverter on, nothing plugged in): the inverter's TX pin idles at about −5…−12 V against GND; its RX pin sits near 0 V. Leave any pin with a positive supply voltage unconnected.
-- If nothing answers, swap the two data wires on the RS232 side first.
-- Power the ESP32 from its own USB supply.
-- **One master only:** unplug the Elfin gateway and the Wi-Fi dongle while the ESP32 is connected.
+![Wiring overview](images/esphome-wiring.svg)
+
+Short version: ESP32 `3V3`/`GND`/`GPIO17`/`GPIO16` → MAX3232 `VCC`/`GND`/`TXD`/`RXD`; MAX3232 RS232 side `R1IN` ← inverter TX, `T1OUT` → inverter RX, `GND` ↔ GND. The GD5548JMH RJ45 pinout is unpublished, so measure it first. Only one master on the port (unplug the Elfin gateway and the Wi-Fi dongle).
 
 ## Setup
 

@@ -10,5 +10,6 @@ Living documentation for the Voltronic/Vevor solar inverter Home Assistant integ
 | [inverter-protocol.md](inverter-protocol.md) | You touch commands, CRC, parsing, field mapping |
 | [research-summary.md](research-summary.md) | You resume the protocol research: what was tried, what works, blind spots, next tests |
 | [settings-map.md](settings-map.md) | You need, per LCD program P01–P64, where to read it and which (owner-tested) command writes it |
+| [esphome-hardware.md](esphome-hardware.md) | You build or debug the ESP32 + MAX3232 hardware: parts, wiring diagrams, RJ45 pin finding, troubleshooting |
 | [esphome.md](esphome.md) | You touch the ESPHome configs in `esphome/` (ESP32 + MAX3232 instead of the Elfin gateway): wiring, native vs bridge, controls |
 | [inverter-vevor-gd5548jmh.md](inverter-vevor-gd5548jmh.md) | You need device specs, LCD settings meaning, fault/warning codes |

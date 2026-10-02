@@ -1,6 +1,6 @@
 # Integration Architecture
 
-How the Home Assistant integration in [`custom_components/voltronic_solar_inverter/`](../custom_components/voltronic_solar_inverter/) is built: a protocol layer with no Home Assistant imports (framing for both the PI30 dialect with CRC and the CRC-less Solar Plug "H" dialect, async TCP client, parsers, write commands), two `DataUpdateCoordinator`s that poll it, and entity platforms that map parsed fields to entities. Read-only entities (sensor, binary_sensor) are always set up; write entities (switch, select, number) only when the **Enable control entities** option is on (default off). Field meanings live in [inverter-protocol.md](inverter-protocol.md); this doc covers structure and data flow.
+How the Home Assistant integration in [`custom_components/voltronic_solar_inverter/`](../custom_components/voltronic_solar_inverter/) is built: a protocol layer with no Home Assistant imports (framing for both the PI30 dialect with CRC and the CRC-less Solar Plug "H" dialect, async TCP client, parsers, write commands), two `DataUpdateCoordinator`s that poll it, and entity platforms that map parsed fields to entities. Read entities (sensor, binary_sensor) and write entities (switch, select, number) are always set up; the README warns that changes are at the user's risk. Field meanings live in [inverter-protocol.md](inverter-protocol.md); this doc covers structure and data flow.
 
 ## Layers
 
@@ -38,7 +38,7 @@ Only answering commands are polled (see "No reply" in [inverter-protocol.md](inv
 | File | Role |
 |---|---|
 | [`__init__.py`](../custom_components/voltronic_solar_inverter/__init__.py) | Setup/unload; picks platforms; removes control entities from the registry when controls are off |
-| [`config_flow.py`](../custom_components/voltronic_solar_inverter/config_flow.py) | User step (host, port, both intervals; probes `QPI`/`QMN`/`QID`, unique id = serial). Options flow (`OptionsFlowWithReload`): intervals + `enable_controls` |
+| [`config_flow.py`](../custom_components/voltronic_solar_inverter/config_flow.py) | User step (host, port, both intervals; probes `QPI`/`QMN`/`QID`, unique id = serial). Options flow (`OptionsFlowWithReload`): the two intervals |
 | [`coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py) | `FastData`, `SlowData`, `VoltronicRuntimeData`, the two coordinators |
 | [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | `VoltronicEntity` (unique id `<serial>_<key>`, device info); `VoltronicControlEntity.async_send()` = the single write path |
 | [`sensor.py`](../custom_components/voltronic_solar_inverter/sensor.py), [`binary_sensor.py`](../custom_components/voltronic_solar_inverter/binary_sensor.py) | Read entities, declared as `EntityDescription` tuples with `value_fn` |
@@ -54,7 +54,7 @@ Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter
 
 | Group | Entities | Source |
 |---|---|---|
-| Live sensors (fast) | grid voltage/frequency, AC output voltage/frequency, apparent power (VA), active power (W), load %, battery voltage, charge current, discharge current, battery power (signed, derived V × (I<sub>chg</sub> − I<sub>dis</sub>)), heat-sink temperature, PV current, PV voltage, PV charging power, mode (enum) | `QPIGS` 0–6, 8, 9, 11–13, 15, 19; `QMOD` |
+| Live sensors (fast) | grid voltage/frequency, AC output voltage/frequency, apparent power (VA), active power (W), load %, battery voltage, charge current, discharge current, battery power (signed, derived V × (I<sub>chg</sub> − I<sub>dis</sub>)), heat-sink temperature, PV current, PV voltage, PV power raw (every sample), PV power (smoothed, see below), mode (enum) | `QPIGS` 0–6, 8, 9, 11–13, 15, 19; `QMOD` |
 | Live sensors, off | bus voltage (diag), SCC battery voltage (diag), battery level estimate (voltage-based %, **not SOC**) | `QPIGS` 7, 14, 10 |
 | Grid power (fast, H) | signed W; sign convention not verified yet | `HGRID[6]` |
 | PV energy (slow, H) | today, this month, this year, total (kWh, `total_increasing`; the inverter's own counters, match the vendor app) | `HGEN` 2–5 |
@@ -69,7 +69,7 @@ Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter
 | Binary, `QPIWS` bits (diag) | one problem sensor per bit a1–a30 except a13; on by default: grid lost (a5), battery low (a12), battery under-voltage shutdown (a14), overload (a16), over-temperature (a9) | `QPIWS` |
 | Binary, `QFLAG` (diag) | buzzer, overload bypass, power saving, return to default LCD screen, auto restart on overload / over-temperature, LCD backlight, beep on primary source interrupt, record fault codes | `QFLAG` |
 
-### Control entities (only with "Enable control entities")
+### Control entities
 
 | Entity | Command | Values offered | Status |
 |---|---|---|---|
@@ -94,6 +94,12 @@ service call -> entity -> VoltronicControlEntity.async_send(build)
                           NAK -> HomeAssistantError "command_rejected"
                           timeout/connection -> HomeAssistantError "command_failed" (never retried)
 ```
+
+### Raw / smoothed pairs and registry defaults
+
+- `<x>_raw` sensors publish every sample (meant for live cards and to be excluded from the recorder); the plain `<x>` sensor ([`VoltronicSmoothedSensor`](../custom_components/voltronic_solar_inverter/sensor.py)) shows the mean of the last 60 s and calls `async_write_ha_state()` only when [`smoothing.SmoothedValue`](../custom_components/voltronic_solar_inverter/smoothing.py) publishes: change ≥ 10 % and ≥ 20 W, a drop to 0, or 10 min since the last publish with any change (constants `SMOOTHING_*` in [`const.py`](../custom_components/voltronic_solar_inverter/const.py)). Availability changes are always written. Today only PV power (`QPIGS[19]`) has a pair; add more by putting a description in `SMOOTHED_SENSORS` (and renaming the live one to `<x>_raw`).
+- `HIDDEN_KEYS` (ratings, identity) are created hidden; `DISABLED_KEYS` (equalization) are created disabled; both in `const.py`.
+- Config entry **1.2** (`async_migrate_entry` in [`__init__.py`](../custom_components/voltronic_solar_inverter/__init__.py)) applies the same defaults to entities created before, unless the user already hid/disabled them, and renames `pv_charging_power` → `pv_power` (same registry entry, so the recorder keeps the history). Registry defaults alone never touch existing entities.
 
 ## How to add a read entity
 

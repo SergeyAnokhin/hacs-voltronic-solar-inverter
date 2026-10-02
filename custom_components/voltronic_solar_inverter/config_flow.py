@@ -12,7 +12,6 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_ENABLE_CONTROLS,
     CONF_FAST_INTERVAL,
     CONF_SLOW_INTERVAL,
     DEFAULT_FAST_INTERVAL,
@@ -65,6 +64,7 @@ class VoltronicConfigFlow(ConfigFlow, domain=DOMAIN):
     """Ask for the gateway address and verify the inverter answers."""
 
     VERSION = 1
+    MINOR_VERSION = 2  # 1.2: see async_migrate_entry
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -87,7 +87,6 @@ class VoltronicConfigFlow(ConfigFlow, domain=DOMAIN):
                     options={
                         CONF_FAST_INTERVAL: int(user_input[CONF_FAST_INTERVAL]),
                         CONF_SLOW_INTERVAL: int(user_input[CONF_SLOW_INTERVAL]),
-                        CONF_ENABLE_CONTROLS: False,
                     },
                 )
 
@@ -113,7 +112,7 @@ class VoltronicConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class VoltronicOptionsFlow(OptionsFlowWithReload):
-    """Poll intervals and the (default off) control-entities switch."""
+    """Poll intervals."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -121,7 +120,6 @@ class VoltronicOptionsFlow(OptionsFlowWithReload):
                 data={
                     CONF_FAST_INTERVAL: int(user_input[CONF_FAST_INTERVAL]),
                     CONF_SLOW_INTERVAL: int(user_input[CONF_SLOW_INTERVAL]),
-                    CONF_ENABLE_CONTROLS: bool(user_input[CONF_ENABLE_CONTROLS]),
                 }
             )
         options = self.config_entry.options
@@ -131,9 +129,6 @@ class VoltronicOptionsFlow(OptionsFlowWithReload):
                     options.get(CONF_FAST_INTERVAL, DEFAULT_FAST_INTERVAL),
                     options.get(CONF_SLOW_INTERVAL, DEFAULT_SLOW_INTERVAL),
                 ),
-                vol.Required(
-                    CONF_ENABLE_CONTROLS, default=options.get(CONF_ENABLE_CONTROLS, False)
-                ): bool,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

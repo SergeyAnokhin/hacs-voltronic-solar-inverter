@@ -1,8 +1,13 @@
 # Voltronic Solar Inverter for Home Assistant (HACS)
 
-A custom Home Assistant integration that reads live data, ratings, settings, warnings and option flags from Voltronic-compatible (PI30 protocol) hybrid solar inverters — developed and tested on the **Vevor GD5548JMH** (reports as `VMII-4000`, 24 V / 4000 W, firmware `00040.09`). The inverter's RS232 port is reached through an RS232-to-TCP gateway (e.g. Elfin EW10/EE10). By default the integration is **read-only**; optional control entities that change settings can be enabled in the options and are off by default.
+> [!CAUTION]
+> **Changing inverter settings from Home Assistant is entirely at your own risk.** The switches, selects and numbers of this integration send setting commands straight to the inverter. A wrong value can change how the battery is charged or cut off, where the load is powered from, or what the inverter does on overload or over-temperature. There is no undo and no warranty; check every change on the inverter's display.
+>
+> **Tested on one unit only:** VEVOR GD5548JMH hybrid inverter, reporting model `VMII-4000`, protocol `PI30`, main firmware `00040.09` (firmware date 2026-01-19), 24 V / 4000 W, single MPPT, LiFePO4 battery bank set as *User-defined* without BMS, connected through an Elfin RS232-to-TCP gateway. On this unit **reading** every value was verified. The **setting commands** follow the Voltronic protocol and a sibling unit (`VMII-6200`), but they have not all been confirmed on this unit yet (status per command: [docs/integration.md](docs/integration.md#control-entities)). On other models or firmware even the readings may differ.
 
-> **Status: 0.2.0, early.** Reading is tested against responses recorded from the real inverter. The setting commands are implemented but **not yet verified on the device**.
+A custom Home Assistant integration that reads live data, ratings, settings, warnings and option flags from Voltronic-compatible (PI30 protocol) hybrid solar inverters — developed and tested on the **Vevor GD5548JMH** (reports as `VMII-4000`, 24 V / 4000 W, firmware `00040.09`). The inverter's RS232 port is reached through an RS232-to-TCP gateway (e.g. Elfin EW10/EE10). It also creates switches, selects and numbers that change inverter settings (see the warning above).
+
+> **Status: 0.3.0, early.** Reading is tested against responses recorded from the real inverter. The setting commands are implemented but **not yet verified on the device**.
 
 ## Requirements
 
@@ -10,7 +15,7 @@ A custom Home Assistant integration that reads live data, ratings, settings, war
 - An RS232-to-TCP gateway connected to the inverter's RS232 port (2400 baud, 8N1), in transparent TCP server mode (Elfin default port `8899`)
 - The gateway serves **one client at a time**: stop other tools (the prototype script, the vendor app) while the integration runs
 
-No gateway? An ESP32 with a MAX3232 level shifter can replace it: [`esphome/vevor-bridge.yaml`](esphome/vevor-bridge.yaml) makes it a TCP bridge on port 8899 for this integration, and [`esphome/vevor-inverter.yaml`](esphome/vevor-inverter.yaml) is a standalone ESPHome firmware (PI30 only, optional setting controls). Wiring and limits: [docs/esphome.md](docs/esphome.md).
+No gateway? An ESP32 with a MAX3232 level shifter can replace it: [`esphome/vevor-bridge.yaml`](esphome/vevor-bridge.yaml) makes it a TCP bridge on port 8899 for this integration, and [`esphome/vevor-inverter.yaml`](esphome/vevor-inverter.yaml) is a standalone ESPHome firmware (PI30 only, optional setting controls). Build guide with wiring diagrams: [docs/esphome-hardware.md](docs/esphome-hardware.md); firmware details: [docs/esphome.md](docs/esphome.md).
 
 ## Installation
 
@@ -19,7 +24,6 @@ No gateway? An ESP32 with a MAX3232 level shifter can replace it: [`esphome/vevo
 1. HACS → ⋮ → *Custom repositories* → add `https://github.com/SergeyAnokhin/hacs-voltronic-solar-inverter`, type *Integration*.
 2. Search for **Voltronic Solar Inverter**, download it and restart Home Assistant.
 
-> ⚠ Until the Home Assistant example integrations are moved out of `custom_components/` in this repository, HACS picks the wrong folder (it installs the first directory it finds). Use the manual installation for now.
 
 **Manual**
 
@@ -33,19 +37,19 @@ Copy `custom_components/voltronic_solar_inverter/` into `<config>/custom_compone
 |---|---|---|
 | Host | — | Gateway IP / host name, e.g. `192.168.1.47` |
 | Port | `8899` | Gateway TCP port |
-| Live values interval | 10 s (5–300) | `QPIGS` + `QMOD` |
+| Live values interval | 10 s (2–300) | `QPIGS` + `QMOD` (+ `HGRID`); one cycle takes ~1.5 s |
 | Settings and warnings interval | 60 s (30–3600) | `QPIRI` + `QFLAG` + `QPIWS` |
 
-Setup reads the protocol, model and serial number (`QPI`, `QMN`, `QID`); the serial is the unique id. *Configure* (options) changes the intervals and the **Enable control entities** switch (default off).
+Setup reads the protocol, model and serial number (`QPI`, `QMN`, `QID`); the serial is the unique id. *Configure* (options) changes the two intervals.
 
 ## Entities
 
 One device (model, serial number, firmware) with:
 
-- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, PV voltage / current / charging power, **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**.
-- **Diagnostic sensors:** current settings and ratings (output source priority, charger source priority, solar supply priority (program 43), battery type, AC input range, back-to-utility / back-to-battery / cut-off / bulk / float voltages, battery low-alarm voltage, max charging currents, equalization settings, rated output values), inverter clock and its offset from Home Assistant's time, fan speeds, serial number, firmware. Disabled by default: bus voltage, solar-charger battery voltage, battery level estimate, grid ratings, machine type, topology, output mode, second-output (dual output) thresholds, BMS SOC thresholds, grid-tie current, firmware date.
-- **Binary sensors:** equalization enabled / active, AC output, load on, charging, solar charging, grid charging, SBU priority, fault, warning (with the active items as attributes); one diagnostic problem sensor per warning/fault bit (grid lost, battery low, overload, over-temperature, … — five on by default); the option flags (buzzer, overload bypass, power saving, backlight, …).
-- **Control entities (only when enabled in the options):** switches for the 9 option flags, selects for output / charger source priority (only owner-verified values: *SBU*, *Only solar*) and solar supply priority (program 43: battery first / load first), numbers for max charging current and max utility charging current (values the inverter reports as allowed) and, on 24 V systems, back-to-utility / back-to-battery / cut-off / bulk voltages. A rejected command (`NAK`) raises an error; after `ACK` the settings are re-read. **Use at your own risk** — see [docs/integration.md](docs/integration.md#control-entities-only-with-enable-control-entities).
+- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, PV voltage / current, **PV power** (smoothed, records few rows) and **PV power raw** (every sample, for live dashboards), **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**.
+- **Diagnostic sensors:** current settings and ratings (output source priority, charger source priority, solar supply priority (program 43), battery type, AC input range, back-to-utility / back-to-battery / cut-off / bulk / float voltages, battery low-alarm voltage, max charging currents), inverter clock and its offset from Home Assistant's time, fan speeds. **Hidden by default** (static values that never change): rated output values, battery rating voltage, serial number, firmware. Disabled by default: equalization settings, bus voltage, solar-charger battery voltage, battery level estimate, grid ratings, machine type, topology, output mode, second-output (dual output) thresholds, BMS SOC thresholds, grid-tie current, firmware date.
+- **Binary sensors:** AC output, load on, charging, solar charging, grid charging, SBU priority, fault, warning (with the active items as attributes); one diagnostic problem sensor per warning/fault bit (grid lost, battery low, overload, over-temperature, … — five on by default); the option flags (buzzer, overload bypass, power saving, backlight, …); disabled by default: equalization enabled / active.
+- **Control entities (change settings, at your own risk):** switches for the 9 option flags, selects for output / charger source priority (only owner-verified values: *SBU*, *Only solar*) and solar supply priority (program 43: battery first / load first), numbers for max charging current and max utility charging current (values the inverter reports as allowed) and, on 24 V systems, back-to-utility / back-to-battery / cut-off / bulk voltages. A rejected command (`NAK`) raises an error; after `ACK` the settings are re-read. **Use at your own risk** — see [docs/integration.md](docs/integration.md#control-entities).
 
 Full list with protocol sources: [docs/integration.md](docs/integration.md).
 
@@ -53,7 +57,29 @@ Full list with protocol sources: [docs/integration.md](docs/integration.md).
 
 - **PV production:** use *PV energy total* (`total_increasing`, kWh) directly in *Settings → Dashboards → Energy → Solar production*. It is the inverter's own counter (same value as the vendor app), read with the CRC-less H protocol of units that support it.
 - **Load (output) energy:** the inverter has no load counter. Create one: *Settings → Devices & services → Helpers → Create helper → Integral sensor* (Riemann sum), input `sensor.<device>_ac_output_power`, method *Left*, metric prefix *k*, time unit *hours*; optionally add a *Utility meter* for daily/monthly totals. Its accuracy depends on the live values interval.
-- Inverters without the H protocol get no PV energy sensors; integrate `…_pv_charging_power` the same way.
+- Inverters without the H protocol get no PV energy sensors; integrate `…_pv_power` the same way.
+
+## Fast dashboard, small database
+
+Every changed value is a new row in the recorder database (Home Assistant writes a state only when it changes, keeps raw history for 10 days, and 5-minute/hourly long-term statistics for every sensor with a state class). With a short *Live values interval* (down to 2 s) fast-changing sensors would fill it, so the integration offers a **raw / normal pair** (for now for PV power, more can follow):
+
+| Entity | Updates | Use it for |
+|---|---|---|
+| `sensor.<device>_pv_power_raw` (*PV power raw*) | every poll | live dashboard cards; **exclude it from the recorder** |
+| `sensor.<device>_pv_power` (*PV power*) | mean of the last 60 s, written only when it moves by ≥ 10 % (and ≥ 20 W), drops to 0, or after 10 min with any change | history graphs, statistics, automations; the dashboard does not jump |
+
+Exclude the raw sensors in `configuration.yaml`:
+
+```yaml
+recorder:
+  exclude:
+    entity_globs:
+      - sensor.inverter_vmii_4000_*_raw
+```
+
+Entity ids assume the default device name *Inverter VMII-4000*. Do **not** exclude the *PV energy* sensors: the Energy dashboard needs their recorded statistics.
+
+For other sensors you can build the same pattern with Home Assistant helpers: a *Statistics* helper (UI) or the YAML *Filter* integration (`time_simple_moving_average` + `time_throttle`) for a smoothed copy, then exclude the original from the recorder.
 
 ## Known limitations (Vevor GD5548JMH, firmware 00040.09)
 
@@ -73,7 +99,7 @@ pip install -r requirements_test.txt
 pytest
 ```
 
-The protocol tests (`tests/test_framing.py`, `test_parsers.py`, `test_h_parsers.py`, `test_commands.py`, `test_client.py`) need only `pytest` and use responses recorded from the real inverter in `tests/fixtures/`. `tests/test_ha_integration.py` needs `pytest-homeassistant-custom-component` and is skipped without it; it runs as is on Linux/WSL (on Windows see [docs/integration.md](docs/integration.md#tests)). No test talks to a real inverter.
+The protocol tests (`tests/test_framing.py`, `test_parsers.py`, `test_h_parsers.py`, `test_commands.py`, `test_client.py`, `test_smoothing.py`) need only `pytest` and use responses recorded from the real inverter in `tests/fixtures/`. `tests/test_ha_integration.py` needs `pytest-homeassistant-custom-component` and is skipped without it; it runs as is on Linux/WSL (on Windows see [docs/integration.md](docs/integration.md#tests)). No test talks to a real inverter.
 
 Other tools: [`python_scripts/get_inverter_info.py`](python_scripts/get_inverter_info.py) (original prototype, prints JSON) and [`tools/probe_inverter.py`](tools/probe_inverter.py) (read-only probe that refuses non-`Q` commands: `python tools/probe_inverter.py --mode both`).
 
@@ -89,9 +115,9 @@ Other tools: [`python_scripts/get_inverter_info.py`](python_scripts/get_inverter
 | [docs/research-summary.md](docs/research-summary.md) | Protocol research: what was tried, what works, open questions, next tests |
 | [docs/settings-map.md](docs/settings-map.md) | LCD programs P01–P64: read source and write command for each |
 | [docs/esphome.md](docs/esphome.md) | ESP32 + MAX3232 with ESPHome: wiring, native firmware, TCP bridge |
+| [docs/esphome-hardware.md](docs/esphome-hardware.md) | Step-by-step build guide: parts, wiring diagrams, finding the RJ45 pins, first test |
 | [docs/inverter-vevor-gd5548jmh.md](docs/inverter-vevor-gd5548jmh.md) | Device reference (specs, settings, fault codes) |
 
-`custom_components/` also contains the official Home Assistant example integrations, used only as reference patterns.
 
 ## License
 

@@ -8,12 +8,15 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
-    CONF_ENABLE_CONTROLS,
     CONF_FAST_INTERVAL,
     CONF_SLOW_INTERVAL,
     DEFAULT_FAST_INTERVAL,
     DEFAULT_SLOW_INTERVAL,
+    DISABLED_KEYS,
     DOMAIN,
+    HIDDEN_KEYS,
+    LOGGER,
+    RENAMED_KEYS,
 )
 from .coordinator import (
     VoltronicConfigEntry,
@@ -23,13 +26,14 @@ from .coordinator import (
 )
 from .protocol import InverterClient, InverterError
 
-READ_PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
-# Write-capable platforms, only set up when the "Enable control entities" option is on.
-CONTROL_PLATFORMS = [Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
-
-
-def _platforms(controls_enabled: bool) -> list[Platform]:
-    return READ_PLATFORMS + CONTROL_PLATFORMS if controls_enabled else READ_PLATFORMS
+# number/select/switch send setting commands (always set up; changes are at the user's risk).
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) -> bool:
@@ -61,36 +65,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) ->
         await client.close()
         raise
 
-    controls_enabled = options.get(CONF_ENABLE_CONTROLS, False)
-    entry.runtime_data = VoltronicRuntimeData(
-        client=client,
-        identity=identity,
-        fast=fast,
-        slow=slow,
-        controls_enabled=controls_enabled,
-    )
-    if not controls_enabled:
-        _remove_control_entities(hass, entry)
+    entry.runtime_data = VoltronicRuntimeData(client=client, identity=identity, fast=fast, slow=slow)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
 
-    await hass.config_entries.async_forward_entry_setups(entry, _platforms(controls_enabled))
+
+async def async_migrate_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) -> bool:
+    """1.1 -> 1.2: rename keys (keeping history), hide static and disable equalization entities.
+
+    Registry defaults only apply to new entities, so existing ones are updated
+    here once. Entities the user already hid or disabled are left alone.
+    """
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        registry = er.async_get(hass)
+        prefix = f"{entry.unique_id}_"
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if not entity.unique_id.startswith(prefix):
+                continue
+            key = entity.unique_id.removeprefix(prefix)
+            changes: dict = {}
+            if (new_key := RENAMED_KEYS.get(key)) is not None:
+                changes["new_unique_id"] = f"{prefix}{new_key}"
+                new_entity_id = entity.entity_id.removesuffix(key) + new_key
+                if entity.entity_id.endswith(key) and registry.async_get(new_entity_id) is None:
+                    changes["new_entity_id"] = new_entity_id
+            if key in HIDDEN_KEYS and entity.hidden_by is None:
+                changes["hidden_by"] = er.RegistryEntryHider.INTEGRATION
+            if key in DISABLED_KEYS and entity.disabled_by is None:
+                changes["disabled_by"] = er.RegistryEntryDisabler.INTEGRATION
+            if changes:
+                registry.async_update_entity(entity.entity_id, **changes)
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+        LOGGER.debug("Migrated config entry %s to version 1.2", entry.entry_id)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) -> bool:
     """Unload a config entry and close the gateway connection."""
-    data = entry.runtime_data
-    unloaded = await hass.config_entries.async_unload_platforms(
-        entry, _platforms(data.controls_enabled)
-    )
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        await data.client.close()
+        await entry.runtime_data.client.close()
     return unloaded
-
-
-def _remove_control_entities(hass: HomeAssistant, entry: VoltronicConfigEntry) -> None:
-    """Drop number/select/switch entities left over from when controls were enabled."""
-    registry = er.async_get(hass)
-    control_domains = {str(platform) for platform in CONTROL_PLATFORMS}
-    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.domain in control_domains:
-            registry.async_remove(entity.entity_id)

@@ -15,6 +15,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import DISABLED_KEYS
 from .coordinator import FastData, SlowData, VoltronicConfigEntry, VoltronicFastCoordinator
 from .entity import VoltronicEntity
 from .protocol.parsers import FLAGS, OUTPUT_ACTIVE_MODES, WARNING_BITS
@@ -91,6 +92,7 @@ SLOW_BINARY_SENSORS: tuple[VoltronicSlowBinaryDescription, ...] = (
         key="equalization_enabled",
         translation_key="equalization_enabled",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default="equalization_enabled" not in DISABLED_KEYS,
         value_fn=lambda d: d.equalization.enabled,
         requires="equalization",
     ),
@@ -98,6 +100,7 @@ SLOW_BINARY_SENSORS: tuple[VoltronicSlowBinaryDescription, ...] = (
         key="equalization_active",
         translation_key="equalization_active",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default="equalization_active" not in DISABLED_KEYS,
         value_fn=lambda d: d.equalization.active,
         requires="equalization",
     ),

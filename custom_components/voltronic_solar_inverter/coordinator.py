@@ -69,7 +69,6 @@ class VoltronicRuntimeData:
     identity: DeviceIdentity
     fast: VoltronicFastCoordinator
     slow: VoltronicSlowCoordinator
-    controls_enabled: bool
 
 
 type VoltronicConfigEntry = ConfigEntry[VoltronicRuntimeData]

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="900" height="520" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="900" height="520" rx="12" fill="#ffffff"/>
+  <text x="450" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#212121">RJ45 plug: pin numbers and T568B wire colours</text>
+
+  <!-- plug body -->
+  <text x="230" y="70" text-anchor="middle" font-size="13" fill="#424242">Contacts facing you, clip at the back, tip pointing up</text>
+  <rect x="90" y="90" width="280" height="190" rx="10" fill="#e3f2fd" stroke="#64b5f6" stroke-width="2" fill-opacity="0.7"/>
+  <!-- contacts -->
+  <g font-size="14" font-weight="700" text-anchor="middle" fill="#212121">
+    <rect x="110" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="141" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="172" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="203" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="234" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="265" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="296" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <rect x="327" y="100" width="18" height="44" rx="2" fill="#fbc02d" stroke="#8d6e63"/>
+    <text x="119" y="164">1</text><text x="150" y="164">2</text><text x="181" y="164">3</text><text x="212" y="164">4</text>
+    <text x="243" y="164">5</text><text x="274" y="164">6</text><text x="305" y="164">7</text><text x="336" y="164">8</text>
+  </g>
+  <!-- wires (T568B) -->
+  <g stroke-width="10">
+    <line x1="119" y1="175" x2="119" y2="330" stroke="#ef6c00" stroke-dasharray="8 6"/>
+    <line x1="119" y1="175" x2="119" y2="330" stroke="#ffffff" stroke-dasharray="6 8" stroke-dashoffset="-8" stroke-width="6"/>
+    <line x1="150" y1="175" x2="150" y2="330" stroke="#ef6c00"/>
+    <line x1="181" y1="175" x2="181" y2="330" stroke="#2e7d32" stroke-dasharray="8 6"/>
+    <line x1="181" y1="175" x2="181" y2="330" stroke="#ffffff" stroke-dasharray="6 8" stroke-dashoffset="-8" stroke-width="6"/>
+    <line x1="212" y1="175" x2="212" y2="330" stroke="#1565c0"/>
+    <line x1="243" y1="175" x2="243" y2="330" stroke="#1565c0" stroke-dasharray="8 6"/>
+    <line x1="243" y1="175" x2="243" y2="330" stroke="#ffffff" stroke-dasharray="6 8" stroke-dashoffset="-8" stroke-width="6"/>
+    <line x1="274" y1="175" x2="274" y2="330" stroke="#2e7d32"/>
+    <line x1="305" y1="175" x2="305" y2="330" stroke="#6d4c41" stroke-dasharray="8 6"/>
+    <line x1="305" y1="175" x2="305" y2="330" stroke="#ffffff" stroke-dasharray="6 8" stroke-dashoffset="-8" stroke-width="6"/>
+    <line x1="336" y1="175" x2="336" y2="330" stroke="#6d4c41"/>
+  </g>
+  <rect x="100" y="330" width="260" height="40" rx="8" fill="#b0bec5" stroke="#78909c"/>
+  <text x="230" y="356" text-anchor="middle" font-size="13" fill="#263238">cable jacket (towards you)</text>
+  <text x="230" y="395" text-anchor="middle" font-size="12" fill="#616161">Striped lines = white with a colour stripe</text>
+
+  <!-- table -->
+  <g font-size="13" fill="#212121">
+    <rect x="420" y="70" width="460" height="30" fill="#eceff1"/>
+    <text x="435" y="90" font-weight="700">Pin</text>
+    <text x="475" y="90" font-weight="700">T568B colour</text>
+    <text x="610" y="90" font-weight="700">Voltronic classic</text>
+    <text x="755" y="90" font-weight="700">VMII (PowMr)</text>
+
+    <text x="440" y="122">1</text><text x="475" y="122">white / orange</text><text x="610" y="122" fill="#2e7d32">TX (inverter out)</text><text x="755" y="122" fill="#9e9e9e">—</text>
+    <text x="440" y="150">2</text><text x="475" y="150">orange</text><text x="610" y="150" fill="#ef6c00">RX (inverter in)</text><text x="755" y="150" fill="#c62828" font-weight="700">+12 V? don't use</text>
+    <text x="440" y="178">3</text><text x="475" y="178">white / green</text><text x="610" y="178" fill="#9e9e9e">—</text><text x="755" y="178" fill="#ef6c00">RX (inverter in)</text>
+    <text x="440" y="206">4</text><text x="475" y="206">blue</text><text x="610" y="206" fill="#9e9e9e">—</text><text x="755" y="206">GND</text>
+    <text x="440" y="234">5</text><text x="475" y="234">white / blue</text><text x="610" y="234" fill="#9e9e9e">—</text><text x="755" y="234">GND</text>
+    <text x="440" y="262">6</text><text x="475" y="262">green</text><text x="610" y="262" fill="#9e9e9e">—</text><text x="755" y="262" fill="#2e7d32">TX (inverter out)</text>
+    <text x="440" y="290">7</text><text x="475" y="290">white / brown</text><text x="610" y="290" fill="#9e9e9e">—</text><text x="755" y="290" fill="#9e9e9e">—</text>
+    <text x="440" y="318">8</text><text x="475" y="318">brown</text><text x="610" y="318">GND</text><text x="755" y="318" fill="#9e9e9e">—</text>
+    <line x1="420" y1="100" x2="880" y2="100" stroke="#bdbdbd"/>
+    <line x1="420" y1="330" x2="880" y2="330" stroke="#bdbdbd"/>
+  </g>
+  <text x="650" y="360" text-anchor="middle" font-size="13" font-weight="700" fill="#c62828">The GD5548JMH pinout is not published.</text>
+  <text x="650" y="380" text-anchor="middle" font-size="13" fill="#c62828">Measure before connecting (see "Find the pins").</text>
+
+  <!-- measurement hint -->
+  <rect x="20" y="420" width="860" height="86" rx="10" fill="#fffde7" stroke="#fbc02d"/>
+  <text x="40" y="446" font-size="14" font-weight="700" fill="#5d4037">Multimeter check (inverter ON, nothing else plugged in, DC volts, black probe on a GND candidate):</text>
+  <text x="40" y="470" font-size="13" fill="#5d4037">• inverter TX: about −5 … −12 V (RS232 idle level)   • inverter RX: about 0 V   • GND: 0 V and continuity to the other GND pin</text>
+  <text x="40" y="492" font-size="13" fill="#5d4037">• a steady POSITIVE voltage (e.g. +12 V) = a supply pin: leave it unconnected</text>
+</svg>

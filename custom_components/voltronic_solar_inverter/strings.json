@@ -32,13 +32,11 @@
         "title": "Inverter options",
         "data": {
           "fast_scan_interval": "Live values interval",
-          "slow_scan_interval": "Settings and warnings interval",
-          "enable_controls": "Enable control entities"
+          "slow_scan_interval": "Settings and warnings interval"
         },
         "data_description": {
           "fast_scan_interval": "How often live values are read (QPIGS, QMOD).",
-          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS).",
-          "enable_controls": "Create switches, selects and numbers that CHANGE inverter settings. Off by default. The setting commands are not verified on every firmware; use at your own risk."
+          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS)."
         }
       }
     }
@@ -93,8 +91,11 @@
       "pv_input_voltage": {
         "name": "PV voltage"
       },
-      "pv_charging_power": {
-        "name": "PV charging power"
+      "pv_power_raw": {
+        "name": "PV power raw"
+      },
+      "pv_power": {
+        "name": "PV power"
       },
       "scc_battery_voltage": {
         "name": "Solar charger battery voltage"

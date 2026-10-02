@@ -54,7 +54,7 @@ LCD screens cycle with UP/DOWN: input V/output V (default) → input Hz/output H
 
 ## 3. LCD settings (programs)
 
-Entered by holding ENTER 3 s; UP/DOWN selects, ENTER confirms. These are the device's user settings. The integration reads them; some can be written by the optional control entities (off by default, unverified, see [integration.md](integration.md#control-entities-only-with-enable-control-entities)). Agents never write them (see [AGENTS.md](../AGENTS.md)). The values below are for the **24 V system** (this unit). Values shown by `QPIRI` correspond to P01 (output priority), P02 (max charge current), P03 (input range), P05 (battery type), P11 (max AC charge current), P16 (charger priority), P26/P27/P29 (bulk/float/cut-off), etc.
+Entered by holding ENTER 3 s; UP/DOWN selects, ENTER confirms. These are the device's user settings. The integration reads them; some can be written by the integration's control entities (at the user's risk, partly unverified, see [integration.md](integration.md#control-entities)). Agents never write them (see [AGENTS.md](../AGENTS.md)). The values below are for the **24 V system** (this unit). Values shown by `QPIRI` correspond to P01 (output priority), P02 (max charge current), P03 (input range), P05 (battery type), P11 (max AC charge current), P16 (charger priority), P26/P27/P29 (bulk/float/cut-off), etc.
 
 | # | Name | Options / range (default) | Why it matters |
 |---|---|---|---|

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
+import time
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -25,14 +26,23 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
-from .coordinator import FastData, SlowData, VoltronicConfigEntry
+from .const import (
+    DISABLED_KEYS,
+    HIDDEN_KEYS,
+    SMOOTHING_ABSOLUTE_THRESHOLD_W,
+    SMOOTHING_HEARTBEAT,
+    SMOOTHING_RELATIVE_THRESHOLD,
+    SMOOTHING_WINDOW,
+)
+from .coordinator import FastData, SlowData, VoltronicConfigEntry, VoltronicFastCoordinator
 from .entity import VoltronicEntity, is_supported
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
+from .smoothing import SmoothedValue
 from .protocol.parsers import (
     BATTERY_TYPES,
     CHARGE_STAGES,
@@ -177,7 +187,8 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(**_current("pv_input_current", lambda d: d.status.pv_input_current)),
     VoltronicFastSensorDescription(**_voltage("pv_input_voltage", lambda d: d.status.pv_input_voltage)),
     VoltronicFastSensorDescription(
-        **_power("pv_charging_power", lambda d: d.status.pv_charging_power)
+        # Every sample; exclude it from the recorder if the interval is short
+        **_power("pv_power_raw", lambda d: d.status.pv_charging_power)
     ),
     VoltronicFastSensorDescription(
         **_voltage(
@@ -479,6 +490,11 @@ EXTRA_SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
     ),
 )
 
+# Same source as the matching *_raw sensor, published only on significant changes.
+SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
+    VoltronicFastSensorDescription(**_power("pv_power", lambda d: d.status.pv_charging_power)),
+)
+
 IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
     VoltronicIdentitySensorDescription(
         key="serial_number",
@@ -516,6 +532,25 @@ IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
 )
 
 
+def _with_defaults[DescriptionT: SensorEntityDescription](
+    descriptions: tuple[DescriptionT, ...],
+) -> tuple[DescriptionT, ...]:
+    """Hide static values (HIDDEN_KEYS) and disable DISABLED_KEYS by default."""
+    result = []
+    for description in descriptions:
+        if description.key in HIDDEN_KEYS:
+            description = replace(description, entity_registry_visible_default=False)
+        if description.key in DISABLED_KEYS:
+            description = replace(description, entity_registry_enabled_default=False)
+        result.append(description)
+    return tuple(result)
+
+
+SLOW_SENSORS = _with_defaults(SLOW_SENSORS)
+EXTRA_SLOW_SENSORS = _with_defaults(EXTRA_SLOW_SENSORS)
+IDENTITY_SENSORS = _with_defaults(IDENTITY_SENSORS)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: VoltronicConfigEntry,
@@ -526,6 +561,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         VoltronicFastSensor(data.fast, d) for d in FAST_SENSORS if is_supported(d, identity)
     ]
+    entities += [VoltronicSmoothedSensor(data.fast, d) for d in SMOOTHED_SENSORS]
     entities += [
         VoltronicSlowSensor(data.slow, d)
         for d in SLOW_SENSORS + EXTRA_SLOW_SENSORS
@@ -545,6 +581,45 @@ class VoltronicFastSensor(VoltronicEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         return self.entity_description.value_fn(self.coordinator.data)
+
+
+class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
+    """Moving average that writes a new state only on a significant change.
+
+    Skipping async_write_ha_state() for insignificant changes is what keeps the
+    recorder database small; availability changes are always written.
+    """
+
+    entity_description: VoltronicFastSensorDescription
+
+    def __init__(
+        self, coordinator: VoltronicFastCoordinator, description: VoltronicFastSensorDescription
+    ) -> None:
+        super().__init__(coordinator, description)
+        self._smoother = SmoothedValue(
+            window=SMOOTHING_WINDOW,
+            relative_threshold=SMOOTHING_RELATIVE_THRESHOLD,
+            absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_W,
+            heartbeat=SMOOTHING_HEARTBEAT,
+        )
+        if coordinator.data is not None:
+            self._smoother.add(time.monotonic(), description.value_fn(coordinator.data))
+        self._written_available = coordinator.last_update_success  # state written on add
+
+    @property
+    def native_value(self) -> StateType:
+        return self._smoother.value
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        changed = False
+        if self.coordinator.last_update_success:
+            changed = self._smoother.add(
+                time.monotonic(), self.entity_description.value_fn(self.coordinator.data)
+            )
+        if changed or self.available != self._written_available:
+            self._written_available = self.available
+            self.async_write_ha_state()
 
 
 class VoltronicSlowSensor(VoltronicEntity, SensorEntity):

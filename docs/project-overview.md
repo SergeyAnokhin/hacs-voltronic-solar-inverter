@@ -6,10 +6,10 @@ A Home Assistant custom integration, distributed through HACS, that polls a Volt
 
 | # | Wish | Status |
 |---|---|---|
-| 1 | Custom HA integration installable via HACS, repo hosted on GitHub | Implemented (0.1.0, see [integration.md](integration.md)). HACS install blocked until the example integrations leave `custom_components/` (open item) |
+| 1 | Custom HA integration installable via HACS, repo hosted on GitHub | Implemented (see [integration.md](integration.md)); the example integrations were removed from `custom_components/`, so HACS installs it |
 | 2 | Turn inverter parameters into HA sensors (live values, nominal values, settings, status flags, warnings) | Implemented: sensors + binary sensors from `QPIGS`, `QMOD`, `QPIRI`, `QPIWS`, `QFLAG` |
 | 3 | Extract **more** data than the prototype: research what other `Q…` commands / fields this or similar Voltronic/Axpert/Vevor inverters expose (internet, community projects), including undocumented ones | Done at night on 2026-10-02 (see [results](#protocol-research-results-2026-10-02)); PV-side checks still pending |
-| 4 | Allow **changing settings** from HA | Code written on 2026-10-02 at the owner's request: switches/selects/numbers behind the "Enable control entities" option (default off). The agent never sends them to the device; the owner tests them on the real unit (see [AGENTS.md](../AGENTS.md) section 0) |
+| 4 | Allow **changing settings** from HA | Code written on 2026-10-02 at the owner's request: switches/selects/numbers, always created since 2026-10-02 (the options switch was removed at the owner's request; README carries a caution). The agent never sends them to the device; the owner tests them on the real unit (see [AGENTS.md](../AGENTS.md) section 0) |
 | 5 | Documentation in English; integration UI in English only (no translations) | Decided |
 | 6 | `README.md` in the usual HACS-integration style: install, config, entities; kept up to date | Done |
 | 7 | Agent keeps `docs/` current and consults it first in each session (see [AGENTS.md](../AGENTS.md)) | In place |
@@ -31,7 +31,7 @@ README.md                  public GitHub page
 docs/                      living documentation (this folder)
 .claude/skills/            update-docs, session-retro
 python_scripts/            working prototype (get_inverter_info.py) + HA examples
-custom_components/         official HA example integrations (reference, read-only) + the future integration
+custom_components/         the integration (voltronic_solar_inverter) only
 esphome/                   ESPHome configs for ESP32 + MAX3232 (native pipsolar, or RS232-TCP bridge)
 ```
 
@@ -39,7 +39,7 @@ Full file map: [code-map.md](code-map.md).
 
 ## Open items / roadmap
 
-1. **HACS packaging (owner's decision):** HACS installs the *first* folder under `custom_components/`, currently the reference `detailed_hello_world_push`. The reference examples must move elsewhere (e.g. `reference/`) before HACS works; until then install manually.
+1. ~~HACS packaging~~ done 2026-10-02: the owner removed the example integrations from `custom_components/`.
 2. **Owner to verify write commands on the real unit** (read back with `QPIRI`/`QFLAG` after each): `PE<x>`/`PD<x>` for each flag; `POP01` really selects SBU and `PCP02` "only solar" under this firmware's menu-position codes; `MCHGC0nn`, `MUCHGCnnn`; `PBCV`/`PBDV`/`PSDV`/`PCVV` ranges. Then confirm the remaining priority codes (output 0/2, charger 0/1) so they can be added to the `*_VERIFIED` sets.
 3. Not implemented as writes: float voltage `PBFT` (range unknown, NAK on the reference unit), battery low-alarm voltage (no command), equalization (`PBEQ*`, deliberately left read-only: equalizing a LiFePO4 bank is harmful), battery type `PBT`, input range `PGR`, clock `DAT`, dual output, feed-in `PEd` (owner keeps it off), and the P46–P49 schedules / AC output on/off (no known command). The schedules are **read** via `HEEP2`.
 4. **Still to do with PV producing:** snapshot `QPIGS`/`Q1`/`QPIWS` with the array connected and charging (PV fields 12–14/19, status bits b1/b2, `QPIWS` a0 "PV loss" clearing, `Q1` charge status/timers), then record fixtures and adjust entity defaults.
@@ -48,6 +48,7 @@ Full file map: [code-map.md](code-map.md).
 7. Optional, owner's decision: enable P25 "Record fault code", then re-test `QPIHF`/`QPICF` (they currently answer `NAK`).
 8. Pin the unknown read positions in [settings-map.md](settings-map.md) (rows marked `?`): the owner changes one LCD setting at a time and the agent diffs `QPIRI QFLAG QBEQI HEEP1 HEEP2 HEEP3`.
 9. Optional: CI workflow (GitHub Actions on Linux) running `pytest` and hassfest/HACS validation.
+10. **Owner's wish: set the P46/P47 and P48/P49 hours from HA.** No setter is known (not in any public protocol, WatchPower or the official KS/MKS/V protocol). Safe search plan, from zero risk upward, in [settings-map.md](settings-map.md#safe-search-plan-for-a-p46p49-setter-owners-wish-2026-10-02): Vevor support → offline string search in the Solar of Things APK / firmware file → emulate the charger window with HA automations (`PCP`/`MUCHGC`). Live guessing of setter names stays forbidden unless the owner decides otherwise.
 
 ## Protocol research results (2026-10-02)
 
@@ -135,3 +136,9 @@ About 80 candidate `Q` commands from mpp-solar, the official Voltronic PDFs (PI3
 | 2026-10-02 | Integration 0.2.0: the research findings were added. The client sends the owner-approved H queries without CRC (exact allow-list `PLAIN_QUERIES`); the H dialect is detected at start-up with `QPRTL`. New read entities: PV energy today/month/year/total (`HGEN`), inverter clock + offset, AC output (P48/P49) and AC charger (P46/P47) schedules, P43, battery low-alarm voltage, temperatures/fans (`HTEMP`), grid power (`HGRID`), charge stage (`Q1`), equalization (`QBEQI`); dual-output, BMS-SOC and grid-tie values disabled by default. Optional queries (Q1, QBEQI, H*) fail softly: only their entities become unavailable. |
 | 2026-10-02 | New writes (controls option only): P43 select (`PVENGUSE00/01`, both read codes owner-verified). Max charging current now uses `MNCHGC<nnn>` (ACKed + read back on the sibling VMII-6200) instead of PI30 `MCHGC<mnn>`. Output priority code 2 relabelled "utility first" (POP mapping of the reference project), still not selectable. Equalization stays read-only on purpose (LiFePO4). |
 | 2026-10-02 | Owner asked for an ESPHome alternative (ESP32 + MAX3232 on the RS232 port, read and write). Added `esphome/`: native config on core `pipsolar` (PI30 only, no H dialect/energy counters) with an opt-in controls package, and a stream-server bridge on port 8899 so the HACS integration works unchanged. Both pass `esphome config`; not yet tried on the real unit. The GD5548JMH RJ45 pinout is unknown: reuse the Elfin cable or measure. See [esphome.md](esphome.md). |
+| 2026-10-02 | Owner's convention for fast-changing values: `<name>_raw` = every sample (owner excludes `*_raw` from the recorder), plain `<name>` = smoothed value that changes rarely (60 s mean, written only on ≥ 10 % / ≥ 20 W change, drop to 0, or every 10 min). Started with PV power only (`pv_power_raw` / `pv_power`); extend to other powers later if it works well. |
+| 2026-10-02 | Static sensors (ratings, serial, firmware, protocol) hidden by default; equalization entities disabled (owner not interested, LiFePO4). Applied to the existing installation by config entry migration 1.1 → 1.2, which also renamed `pv_charging_power` → `pv_power` keeping its history. |
+| 2026-10-02 | Minimum live values interval lowered from 5 s to 2 s at the owner's request (one fast cycle takes ~1.5 s). |
+| 2026-10-02 | Controls are present but hidden behind the options switch "Enable control entities" (default off); the owner did not see them at first. Priority selects still offer only owner-verified codes (output: SBU; charger: only solar). |
+| 2026-10-02 | Owner removed the "Enable control entities" option: control entities are always created. The README starts with a red CAUTION block: changes are at the user's own risk, tested only on the owner's unit (exact model/firmware/battery listed), setting commands not all confirmed yet. Old `enable_controls` values in existing entries are ignored. |
+| 2026-10-02 | Letter to Vevor support drafted (in chat) asking for the RS232 commands for P46–P49 and AC output on/off; the Solar of Things app does not show these programs either. |
