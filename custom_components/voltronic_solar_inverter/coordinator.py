@@ -32,7 +32,7 @@ class FastData:
     """QPIGS + QMOD (required), HGRID (optional, H dialect)."""
 
     status: GeneralStatus
-    mode: str
+    mode: str | None  # None = QMOD answered with a letter not in DEVICE_MODES
     grid_power: int | None = None
 
 
@@ -131,9 +131,20 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
 class VoltronicFastCoordinator(_VoltronicCoordinator[FastData]):
     """Live values: QPIGS and QMOD, plus HGRID grid power when the H dialect exists."""
 
+    _mode_error: str | None = None  # last unknown-mode message, logged once
+
     async def _fetch(self) -> FastData:
         status = await self.client.read_general_status()
-        mode = await self.client.read_mode()
+        try:
+            mode = await self.client.read_mode()
+        except InverterProtocolError as err:
+            # An unknown mode letter must not make every live entity unavailable.
+            if str(err) != self._mode_error:
+                LOGGER.warning("%s; the mode sensor shows unknown", err)
+            self._mode_error = str(err)
+            mode = None
+        else:
+            self._mode_error = None
         grid_power = None
         if self.h_supported:
             grid_power = await self._optional(self.client.read_grid_power())

@@ -268,7 +268,8 @@
           "battery": "Battery",
           "fault": "Fault",
           "power_saving": "Power saving",
-          "shutdown": "Shutdown"
+          "shutdown": "Shutdown",
+          "charging": "Charging (output off)"
         }
       },
       "output_source_priority": {

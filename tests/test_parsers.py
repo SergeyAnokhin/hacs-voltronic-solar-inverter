@@ -87,6 +87,7 @@ def test_qmod():
     assert parse_qmod(FULL["QMOD"]) == "battery"
     assert parse_qmod(STANDBY["QMOD"]) == "standby"
     assert parse_qmod("L") == "line"
+    assert parse_qmod("C") == "charging"  # live 2026-10-03: output off, PV charging, no grid
     with pytest.raises(InverterProtocolError):
         parse_qmod("X")
 

@@ -266,6 +266,20 @@ async def test_connection_loss_makes_entities_unavailable(
     assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "237.8"
 
 
+async def test_unknown_mode_does_not_fail_setup(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.table["QMOD"] = "X"
+    entry = await setup(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get(f"sensor.{PREFIX}_mode").state == "unknown"
+    assert hass.states.get(f"binary_sensor.{PREFIX}_ac_output").state == "unknown"
+    assert hass.states.get(f"sensor.{PREFIX}_battery_voltage").state == "25.6"
+    inverter.table["QMOD"] = "C"
+    await entry.runtime_data.fast.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(f"sensor.{PREFIX}_mode").state == "charging"
+    assert hass.states.get(f"binary_sensor.{PREFIX}_ac_output").state == STATE_OFF
+
+
 async def test_unload_closes_connection(hass: HomeAssistant, inverter: Inverter) -> None:
     entry = await setup(hass)
     assert await hass.config_entries.async_unload(entry.entry_id)

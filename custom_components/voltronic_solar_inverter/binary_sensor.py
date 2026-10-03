@@ -47,7 +47,7 @@ FAST_BINARY_SENSORS: tuple[VoltronicFastBinaryDescription, ...] = (
         key="ac_output_active",
         translation_key="ac_output_active",
         device_class=BinarySensorDeviceClass.POWER,
-        value_fn=lambda d: d.mode in OUTPUT_ACTIVE_MODES,
+        value_fn=lambda d: None if d.mode is None else d.mode in OUTPUT_ACTIVE_MODES,
     ),
     VoltronicFastBinaryDescription(
         key="load_on",

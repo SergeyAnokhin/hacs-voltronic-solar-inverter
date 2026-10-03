@@ -147,6 +147,7 @@ DEVICE_MODES: Final = {
     "F": "fault",
     "H": "power_saving",
     "D": "shutdown",
+    "C": "charging",  # output off, battery charging (seen 2026-10-03: PV charging, no grid)
 }
 OUTPUT_ACTIVE_MODES: Final = frozenset({"line", "battery"})
 

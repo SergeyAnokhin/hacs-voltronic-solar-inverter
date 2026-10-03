@@ -28,7 +28,7 @@ response: '(' <payload, space separated> <CRC16 hi> <CRC16 lo> 0x0D
 | `QSID` | `14` + serial + 6 extra chars | Serial with 2-digit length prefix (generic decode: `r[2:2+int(r[0:2])]`) | static |
 | `QVFW` / `QVFW2` | `VERFW:00040.09` / `VERFW2:00000.00` | Main CPU / second (SCC) CPU firmware | static |
 | `QMD` | `#####INVERTEX3K ###3000 99 1/1 230 230 02 12.0` | UPS-protocol "rated information": model `INVERTEX3K`, rated VA `3000`, PF 99 %, phases 1/1, in/out 230/230 V, 2 batteries × 12.0 V. ⚠ **Rated VA (3000) disagrees with `QPIRI` (4000 VA)**: a generic firmware string, not reliable | static |
-| `QMOD` | `B` | Mode: P power-on, S standby (output off), L line, B battery, F fault, H power-saving (generic; S/B verified) | fast |
+| `QMOD` | `B` | Mode: P power-on, S standby (output off), L line, B battery, F fault, H power-saving, **C charging with output off** (2026-10-03: no grid, output 0 V, PV charging 21 A, status2 `000`); S/B/L/C verified, others generic. The integration maps an unknown letter to an unknown mode instead of failing the poll | fast |
 | `QPIGS` | 21 fields, see below | Live status | fast |
 | `Q1` | 18 fields, see below | Extra live status (temperatures, flags) | medium |
 | `QBV` | `25.6 095 ` | UPS-protocol battery info: battery voltage (V, 0.1 V resolution) and the same voltage-derived capacity % as `QPIGS[10]`. Only 2 of the 5 UPS fields are present. Redundant with `QPIGS` | not needed |
