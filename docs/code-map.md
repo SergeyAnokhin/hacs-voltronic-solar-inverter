@@ -27,7 +27,7 @@ Where to find things. `custom_components/` contains only this integration (the H
 | [`…/protocol/commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) | **All** setting commands (validated builders), 24 V voltage ranges, `QUERY_RE` |
 | [`…/protocol/errors.py`](../custom_components/voltronic_solar_inverter/protocol/errors.py) | Exception hierarchy (`InverterError` …) |
 | [`…/smoothing.py`](../custom_components/voltronic_solar_inverter/smoothing.py) | `SmoothedValue` (mean or median over a window, publishes only significant changes) and `DailyMax`; no HA imports |
-| [`…/coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py), [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | Fast/slow coordinators, runtime data; base entity and the single write path |
+| [`…/coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py), [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | Fast/slow coordinators, runtime data, failure grace (`failures`, per-field `_misses`); base entity (`available` honours the grace) and the single write path |
 | `…/sensor.py`, `binary_sensor.py`, `switch.py`, `select.py`, `number.py` | Entity platforms (descriptions with `value_fn`) |
 | `…/config_flow.py`, `diagnostics.py`, `strings.json`, `translations/en.json`, `icons.json` | Config/options flow, redacted diagnostics, UI text (en only), icons |
 | [`tests/conftest.py`](../tests/conftest.py) | Fixture loaders and `FakeGateway` (fake transport; no socket) |

@@ -104,6 +104,17 @@ For other sensors you can build the same pattern with Home Assistant helpers: a 
 - On this firmware output/charger priority codes follow the LCD menu position, not the generic Voltronic numbering; unconfirmed codes are shown as such and cannot be selected.
 - PV values are not yet verified with the array producing.
 
+## Troubleshooting
+
+A single lost answer from the gateway no longer makes entities flicker: they keep their last value for two failed polls in a row and only then become unavailable. To see why polls fail, turn on debug logging (integration page → ⋮ → *Enable debug logging*, or in `configuration.yaml`):
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.voltronic_solar_inverter: debug
+```
+
 ## Development
 
 ```bash

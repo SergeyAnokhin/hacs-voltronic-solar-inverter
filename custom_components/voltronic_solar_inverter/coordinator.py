@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, MAX_MISSED_UPDATES
 from .protocol import (
     DeviceIdentity,
     GeneralStatus,
@@ -78,6 +78,7 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
     """Shared plumbing: one client, translated UpdateFailed on any inverter error."""
 
     config_entry: VoltronicConfigEntry
+    failures = 0  # consecutive failed updates; entities ride out MAX_MISSED_UPDATES
 
     def __init__(
         self,
@@ -97,16 +98,29 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
         )
         self.client = client
         self.identity = identity
+        self._misses: dict[str, int] = {}  # consecutive misses per optional field
 
     async def _async_update_data(self) -> DataT:
         try:
-            return await self._fetch()
+            data = await self._fetch()
         except InverterError as err:
+            self.failures += 1
+            LOGGER.debug(
+                "%s update failed (%d in a row, entities %s): %s",
+                self.name,
+                self.failures,
+                "kept" if self.failures <= MAX_MISSED_UPDATES else "unavailable",
+                err,
+            )
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="update_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
+        if self.failures:
+            LOGGER.debug("%s update recovered after %d failure(s)", self.name, self.failures)
+        self.failures = 0
+        return data
 
     async def _fetch(self) -> DataT:
         raise NotImplementedError
@@ -115,17 +129,33 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
     def h_supported(self) -> bool:
         return self.identity.h_protocol is not None
 
-    async def _optional[T](self, request: Awaitable[T]) -> T | None:
+    async def _optional[T](self, request: Awaitable[T], field: str | None = None) -> T | None:
         """Run a query whose failure must not make every entity unavailable.
 
         Timeouts, NAK and malformed answers give None; connection errors still
-        fail the whole update.
+        fail the whole update. With ``field`` (a data field name), a failed read
+        returns that field's previous value for up to MAX_MISSED_UPDATES cycles.
         """
         try:
-            return await request
+            value = await request
         except (InverterTimeoutError, InverterNakError, InverterProtocolError) as err:
-            LOGGER.debug("Optional query failed: %s", err)
-            return None
+            if field is None:
+                LOGGER.debug("Optional query failed: %s", err)
+                return None
+            misses = self._misses[field] = self._misses.get(field, 0) + 1
+            previous = getattr(self.data, field, None)
+            keep = previous is not None and misses <= MAX_MISSED_UPDATES
+            LOGGER.debug(
+                "Optional query for %s failed (%d in a row, %s): %s",
+                field,
+                misses,
+                "last value kept" if keep else "entities unavailable",
+                err,
+            )
+            return previous if keep else None
+        if field is not None:
+            self._misses.pop(field, None)
+        return value
 
 
 class VoltronicFastCoordinator(_VoltronicCoordinator[FastData]):
@@ -147,7 +177,7 @@ class VoltronicFastCoordinator(_VoltronicCoordinator[FastData]):
             self._mode_error = None
         grid_power = None
         if self.h_supported:
-            grid_power = await self._optional(self.client.read_grid_power())
+            grid_power = await self._optional(self.client.read_grid_power(), "grid_power")
         return FastData(status=status, mode=mode, grid_power=grid_power)
 
 
@@ -160,17 +190,17 @@ class VoltronicSlowCoordinator(_VoltronicCoordinator[SlowData]):
         rated = await client.read_rated_info()
         flags = await client.read_flags()
         warnings = await client.read_warnings()
-        equalization = await self._optional(client.read_equalization())
+        equalization = await self._optional(client.read_equalization(), "equalization")
         q1 = await self._optional(client.query("Q1"))
         charge_stage = None
         if q1 is not None:
             charge_stage = await self._optional(_parse_charge_stage(q1))
         heep1 = heep2 = generation = temperatures = None
         if self.h_supported:
-            heep1 = await self._optional(client.read_settings_1())
-            heep2 = await self._optional(client.read_settings_2())
-            generation = await self._optional(client.read_generation())
-            temperatures = await self._optional(client.read_temperatures())
+            heep1 = await self._optional(client.read_settings_1(), "heep1")
+            heep2 = await self._optional(client.read_settings_2(), "heep2")
+            generation = await self._optional(client.read_generation(), "generation")
+            temperatures = await self._optional(client.read_temperatures(), "temperatures")
         return SlowData(
             rated=rated,
             flags=flags,

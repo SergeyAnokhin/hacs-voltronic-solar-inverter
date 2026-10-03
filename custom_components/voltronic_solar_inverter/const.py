@@ -25,6 +25,10 @@ MIN_FAST_INTERVAL: Final = 2  # one fast cycle (QPIGS + QMOD + HGRID) takes ~1.5
 MAX_FAST_INTERVAL: Final = 300
 MIN_SLOW_INTERVAL: Final = 30
 MAX_SLOW_INTERVAL: Final = 3600
+# A single lost answer must not make entities flicker: entities keep the last
+# value for this many consecutive failed updates (and an optional H-dialect
+# part keeps its last value for this many missed reads) before going unavailable.
+MAX_MISSED_UPDATES: Final = 5
 
 # Static values (ratings, identity): created hidden; they never change.
 HIDDEN_KEYS: Final = frozenset(

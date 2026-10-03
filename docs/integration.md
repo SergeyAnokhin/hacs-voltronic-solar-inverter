@@ -18,9 +18,11 @@ protocol/commands.py  all setting commands (validated WriteCommand builders), al
 coordinator.py        fast: QPIGS + QMOD (+ HGRID)                       default 10 s
    |                  slow: QPIRI + QFLAG + QPIWS, optional QBEQI, Q1    default 60 s
    |                        (+ HEEP1, HEEP2, HGEN, HTEMP)
-   |                  required query fails -> UpdateFailed -> all entities unavailable
-   |                  optional query times out/NAK/garbled -> field None -> only its
-   |                  entities unavailable (connection errors still fail the update)
+   |                  required query fails -> UpdateFailed; entities keep their last
+   |                  value for MAX_MISSED_UPDATES (2) failures in a row, then unavailable
+   |                  optional query times out/NAK/garbled -> previous field value for
+   |                  up to 2 misses, then None -> only its entities unavailable
+   |                  (connection errors still fail the update)
 __init__.py           read_identity() once (QPI QMN QID QVFW, optional QVFW2 QMCHGCR
    |                  QMUCHGCR, QPRTL without CRC -> H dialect present?, HIMSG1),
    |                  ConfigEntryNotReady if offline; runtime_data = VoltronicRuntimeData
@@ -112,6 +114,10 @@ Fast coordinator (default 10 s): live values — the sensors/binary sensors from
 2. Add an `EntityDescription` with a `value_fn` to the right tuple in `sensor.py` / `binary_sensor.py` (fast = `QPIGS`/`QMOD`/`HGRID`, slow = everything else). If the field comes from an optional query, set `requires="<data field>"`. Unconfirmed fields: `entity_registry_enabled_default=False`, diagnostic.
 3. Add its name (and enum states) under `entity.<platform>.<translation_key>` in `strings.json` and copy the file to `translations/en.json`.
 4. A new command must be an answering one; add it to a coordinator's `_fetch` (wrapped in `_optional()` unless every supported inverter answers it) and to the poll list in this doc. A new H query must also be owner-approved and added to `PLAIN_QUERIES`.
+
+## Logging
+
+Logger `custom_components.voltronic_solar_inverter` (the client logs under `….protocol.client`). Home Assistant itself logs the first failed update of each coordinator at ERROR ("Error fetching voltronic_solar_inverter fast data: …") and the recovery at INFO. At DEBUG the integration adds: every failed update with its count and whether entities were kept, recoveries, failed optional queries per field, retries, connect / reconnect / close of the gateway connection, discarded stale bytes.
 
 ## Tests
 

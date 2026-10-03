@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import DOMAIN, MANUFACTURER, MAX_MISSED_UPDATES
 from .coordinator import VoltronicFastCoordinator, VoltronicSlowCoordinator
 from .protocol import (
     DeviceIdentity,
@@ -65,11 +65,15 @@ class VoltronicEntity[CoordinatorT: VoltronicCoordinator](CoordinatorEntity[Coor
 
     @property
     def available(self) -> bool:
-        """Also unavailable when the optional part this entity needs was not read.
+        """Unavailable only after MAX_MISSED_UPDATES failed updates in a row.
 
-        Descriptions may set ``requires`` to a coordinator data field name.
+        Also unavailable when the optional part this entity needs was not read;
+        descriptions may set ``requires`` to a coordinator data field name.
         """
-        if not super().available:
+        coordinator = self.coordinator
+        if coordinator.data is None or (
+            not coordinator.last_update_success and coordinator.failures > MAX_MISSED_UPDATES
+        ):
             return False
         requires = getattr(self.entity_description, "requires", None)
         if requires is None:

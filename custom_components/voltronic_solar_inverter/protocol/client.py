@@ -231,6 +231,7 @@ class InverterClient:
         await self._connect()
         if not await self._drain():
             # The gateway closed the idle connection: reconnect once, transparently.
+            _LOGGER.debug("gateway closed the idle connection, reconnecting")
             await self._close()
             await self._connect()
         wait = self._last_exchange + self.min_gap - time.monotonic()
@@ -268,6 +269,7 @@ class InverterClient:
             raise InverterConnectionError(
                 f"cannot connect to {self.host}:{self.port}: {err}"
             ) from err
+        _LOGGER.debug("connected to %s:%s", self.host, self.port)
 
     async def _drain(self) -> bool:
         """Discard stale bytes; return False if the gateway closed the connection."""
@@ -285,6 +287,7 @@ class InverterClient:
         writer, self._reader, self._writer = self._writer, None, None
         if writer is None:
             return
+        _LOGGER.debug("closing connection to %s:%s", self.host, self.port)
         writer.close()
         with contextlib.suppress(OSError, asyncio.TimeoutError):
             await asyncio.wait_for(writer.wait_closed(), 1.0)

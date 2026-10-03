@@ -26,6 +26,7 @@ from custom_components.voltronic_solar_inverter.const import (
     CONF_FAST_INTERVAL,
     CONF_SLOW_INTERVAL,
     DOMAIN,
+    MAX_MISSED_UPDATES,
 )
 from custom_components.voltronic_solar_inverter.protocol.client import InverterClient
 from custom_components.voltronic_solar_inverter.protocol.framing import crc_bytes, encode_frame
@@ -257,6 +258,11 @@ async def test_connection_loss_makes_entities_unavailable(
 ) -> None:
     entry = await setup(hass)
     inverter.offline = True
+    # Short outages are ridden out: the last value stays for MAX_MISSED_UPDATES failures.
+    for _ in range(MAX_MISSED_UPDATES):
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
+        assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "237.8"
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == STATE_UNAVAILABLE
@@ -426,7 +432,13 @@ async def test_failed_h_query_only_affects_its_entities(
     hass: HomeAssistant, inverter: Inverter
 ) -> None:
     entry = await setup(hass)
+    today = hass.states.get(f"sensor.{PREFIX}_pv_energy_today").state
     del inverter.plain["HGEN"]  # e.g. the answer got lost
+    # The last value is kept for MAX_MISSED_UPDATES missed reads, then unavailable.
+    for _ in range(MAX_MISSED_UPDATES):
+        await entry.runtime_data.slow.async_refresh()
+        await hass.async_block_till_done()
+        assert hass.states.get(f"sensor.{PREFIX}_pv_energy_today").state == today
     await entry.runtime_data.slow.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(f"sensor.{PREFIX}_pv_energy_today").state == STATE_UNAVAILABLE
@@ -491,10 +503,11 @@ async def test_pv_power_raw_and_smoothed(hass: HomeAssistant, inverter: Inverter
     assert hass.states.get(live_id).state == "300"
     assert hass.states.get(smooth_id).state == "780"
 
-    # Unavailable together with the coordinator, back afterwards.
+    # Unavailable together with the coordinator (after the grace period), back afterwards.
     inverter.offline = True
-    await entry.runtime_data.fast.async_refresh()
-    await hass.async_block_till_done()
+    for _ in range(MAX_MISSED_UPDATES + 1):
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
     assert hass.states.get(smooth_id).state == STATE_UNAVAILABLE
     inverter.offline = False
     await poll(300)
