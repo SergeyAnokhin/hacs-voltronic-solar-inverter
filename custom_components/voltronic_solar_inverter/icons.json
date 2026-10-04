@@ -78,6 +78,15 @@
       },
       "pv_power_median_today": {
         "default": "mdi:solar-power-variant-outline"
+      },
+      "pv_input_current_max_today": {
+        "default": "mdi:solar-power"
+      },
+      "battery_charge_current_max_today": {
+        "default": "mdi:battery-arrow-up"
+      },
+      "battery_discharge_current_max_today": {
+        "default": "mdi:battery-arrow-down"
       }
     },
     "binary_sensor": {

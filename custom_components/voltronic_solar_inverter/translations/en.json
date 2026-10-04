@@ -110,7 +110,36 @@
         "name": "PV power median today"
       },
       "pv_power_max_today": {
-        "name": "PV power max today"
+        "name": "PV power max today",
+        "state_attributes": {
+          "max_time": {
+            "name": "Time of maximum"
+          }
+        }
+      },
+      "pv_input_current_max_today": {
+        "name": "PV current max today",
+        "state_attributes": {
+          "max_time": {
+            "name": "Time of maximum"
+          }
+        }
+      },
+      "battery_charge_current_max_today": {
+        "name": "Battery charge current max today",
+        "state_attributes": {
+          "max_time": {
+            "name": "Time of maximum"
+          }
+        }
+      },
+      "battery_discharge_current_max_today": {
+        "name": "Battery discharge current max today",
+        "state_attributes": {
+          "max_time": {
+            "name": "Time of maximum"
+          }
+        }
       },
       "scc_battery_voltage": {
         "name": "Solar charger battery voltage"

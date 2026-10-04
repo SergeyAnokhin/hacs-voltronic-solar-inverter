@@ -134,3 +134,17 @@ def test_daily_max_restore():
     daily.restore(date(2026, 10, 5), 1234.0)
     assert daily.add(date(2026, 10, 5), 1000) is False
     assert daily.value == 1234
+
+
+def test_daily_max_keeps_time_of_first_maximum():
+    from datetime import date, datetime
+
+    daily = DailyMax()
+    monday = date(2026, 10, 5)
+    t1, t2, t3 = (datetime(2026, 10, 5, h) for h in (9, 12, 13))
+    daily.add(monday, 10, t1)
+    assert daily.add(monday, 25, t2) is True
+    assert daily.add(monday, 25, t3) is False  # equal value: time of the first one stays
+    assert (daily.value, daily.at) == (25, t2)
+    daily.restore(monday, 30, t3)
+    assert (daily.value, daily.at) == (30, t3)

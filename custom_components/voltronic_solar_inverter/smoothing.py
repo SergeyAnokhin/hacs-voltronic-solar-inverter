@@ -9,33 +9,34 @@ the recorder) when it moved significantly, dropped to zero, or after
 from __future__ import annotations
 
 from collections import deque
-from datetime import date
+from datetime import date, datetime
 from statistics import mean as _mean, median as _median
 
 STATISTICS = {"mean": _mean, "median": _median, "max": max}
 
 
 class DailyMax:
-    """Highest sample of the current day (rounded to whole units); starts over on a new day."""
+    """Highest sample of the current day (rounded to whole units); starts over on a new day.
+
+    ``at`` is when the maximum was first reached (the time passed with that sample).
+    """
 
     def __init__(self) -> None:
         self.value: int | None = None
         self.day: date | None = None
+        self.at: datetime | None = None
 
-    def restore(self, day: date, value: float) -> None:
+    def restore(self, day: date, value: float, at: datetime | None = None) -> None:
         """Take over a value stored earlier the same day (after a restart)."""
-        self.day, self.value = day, round(value)
+        self.day, self.value, self.at = day, round(value), at
 
-    def add(self, day: date, sample: float | None) -> bool:
-        """Add a sample taken on ``day``; True if the maximum changed."""
+    def add(self, day: date, sample: float | None, at: datetime | None = None) -> bool:
+        """Add a sample taken on ``day`` (at ``at``); True if the maximum changed."""
         if sample is None:
             return False
         sample = round(sample)
-        if day != self.day:
-            self.day, self.value = day, sample
-            return True
-        if self.value is None or sample > self.value:
-            self.value = sample
+        if day != self.day or self.value is None or sample > self.value:
+            self.day, self.value, self.at = day, sample, at
             return True
         return False
 

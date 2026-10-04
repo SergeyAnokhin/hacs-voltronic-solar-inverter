@@ -566,12 +566,24 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     ),
 )
 
-# Highest PV power since midnight (HA local time).
+# Highest value since midnight (HA local time); attribute ATTR_MAX_TIME = when it was reached.
 DAILY_MAX_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(
         **_power("pv_power_max_today", lambda d: d.status.pv_charging_power)
     ),
+    VoltronicFastSensorDescription(
+        **_current("pv_input_current_max_today", lambda d: d.status.pv_input_current)
+    ),
+    VoltronicFastSensorDescription(
+        **_current("battery_charge_current_max_today", lambda d: d.status.battery_charge_current)
+    ),
+    VoltronicFastSensorDescription(
+        **_current(
+            "battery_discharge_current_max_today", lambda d: d.status.battery_discharge_current
+        )
+    ),
 )
+ATTR_MAX_TIME = "max_time"
 
 IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
     VoltronicIdentitySensorDescription(
@@ -752,24 +764,36 @@ class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):
             and last.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
             and dt_util.as_local(last.last_updated).date() == today
         ):
+            at = last.attributes.get(ATTR_MAX_TIME)
             try:
-                self._max.restore(today, float(last.state))
+                self._max.restore(
+                    today, float(last.state), dt_util.parse_datetime(at) if isinstance(at, str) else None
+                )
             except ValueError:
                 pass
         if self.coordinator.data is not None:
-            self._max.add(today, self.entity_description.value_fn(self.coordinator.data))
+            self._add_sample()
+
+    def _add_sample(self) -> bool:
+        now = dt_util.now()
+        return self._max.add(
+            now.date(), self.entity_description.value_fn(self.coordinator.data), now.replace(microsecond=0)
+        )
 
     @property
     def native_value(self) -> StateType:
         return self._max.value
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        at = self._max.at
+        return {ATTR_MAX_TIME: at.isoformat()} if at is not None else None
+
     @callback
     def _handle_coordinator_update(self) -> None:
         changed = False
         if self.coordinator.last_update_success:
-            changed = self._max.add(
-                dt_util.now().date(), self.entity_description.value_fn(self.coordinator.data)
-            )
+            changed = self._add_sample()
         if changed or self.available != self._written_available:
             self._written_available = self.available
             self.async_write_ha_state()

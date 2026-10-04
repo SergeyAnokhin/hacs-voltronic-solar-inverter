@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from conftest import FakeGateway, answered, plain_answered
@@ -532,6 +533,20 @@ async def test_pv_power_median_and_daily_max(hass: HomeAssistant, inverter: Inve
     assert hass.states.get(max_id).state == "1500"
     assert hass.states.get(median_id).state == "1000"
     assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10min").state == "1500"
+
+
+async def test_daily_max_currents_and_time(hass: HomeAssistant, inverter: Inverter) -> None:
+    await setup(hass)
+    for key, live, unit in (
+        ("pv_power_max_today", "pv_power_raw", "W"),
+        ("pv_current_max_today", "pv_current", "A"),
+        ("battery_charge_current_max_today", "battery_charge_current", "A"),
+        ("battery_discharge_current_max_today", "battery_discharge_current", "A"),
+    ):
+        state = hass.states.get(f"sensor.{PREFIX}_{key}")
+        assert state.state == hass.states.get(f"sensor.{PREFIX}_{live}").state, key
+        assert state.attributes["unit_of_measurement"] == unit
+        assert dt_util.parse_datetime(state.attributes["max_time"]) is not None, key
 
 
 async def test_values_are_rounded_in_the_state(hass: HomeAssistant, inverter: Inverter) -> None:

@@ -81,6 +81,8 @@ Every changed value is a new row in the recorder database (Home Assistant writes
 | `sensor.<device>_pv_power_median_today` (*PV power median today*) | median since midnight, same write rules; starts over at midnight and after a restart | typical power today |
 | `sensor.<device>_pv_power_max_today` (*PV power max today*) | written only when a new maximum is reached; starts over at midnight | today's peak; survives a restart |
 
+The same *max today* rule exists for the measured currents: `pv_current_max_today` (*PV current max today*), `battery_charge_current_max_today` and `battery_discharge_current_max_today` (whole amperes). Every *max today* sensor has the attribute `max_time` (*Time of maximum*): the local time when today's maximum was first reached (also restored after a restart). The inverter reports no grid input or AC output current, so there is no maximum for those.
+
 `grid_power` / `grid_power_raw` and `ac_output_active_power` (*Load power*, the output in W) / `ac_output_active_power_raw` follow the same pair rule. Values are rounded before they reach the state (and so the database): battery-side and PV voltages to 0.1 V, grid / AC output voltages and all currents to whole numbers.
 
 Exclude the raw sensors in `configuration.yaml`:
