@@ -3,6 +3,8 @@
 One persistent connection, one exchange at a time (asyncio.Lock), read until
 CR, CRC check, per-command timeout, retry of read-only queries, transparent
 reconnect. The gateway serves a single client; unknown commands are silent.
+After a timeout the connection is dropped, so an answer that arrives late
+cannot be taken as the answer to the next command.
 """
 
 from __future__ import annotations
@@ -59,6 +61,7 @@ DEFAULT_CONNECT_TIMEOUT = 5.0
 DEFAULT_RETRIES = 1  # the first command after an idle period is sometimes lost
 DEFAULT_MIN_GAP = 0.1  # pause between two exchanges
 _DRAIN_WAIT = 0.01
+_RESYNC_DRAIN_WAIT = 0.2  # after a reconnect caused by a timeout or an out-of-sync answer
 
 OpenConnection = Callable[
     [str, int], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]
@@ -90,6 +93,7 @@ class InverterClient:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._last_exchange = 0.0
+        self._resync = False  # next connection drains longer before the first command
         self.last_responses: dict[str, str] = {}
 
     # --- public API ------------------------------------------------------------
@@ -138,7 +142,14 @@ class InverterClient:
         return parse_qpigs(await self.query("QPIGS"))
 
     async def read_mode(self) -> str:
-        return parse_qmod(await self.query("QMOD"))
+        payload = await self.query("QMOD")
+        if len(payload.strip()) != 1:
+            # Another command's late answer (seen: a QPIGS payload): resync, ask again.
+            _LOGGER.debug("QMOD answered %r: out of sync, reconnecting", payload)
+            async with self._lock:
+                await self._close(resync=True)
+            payload = await self.query("QMOD")
+        return parse_qmod(payload)
 
     async def read_rated_info(self) -> RatedInfo:
         return parse_qpiri(await self.query("QPIRI"))
@@ -229,7 +240,7 @@ class InverterClient:
 
     async def _exchange(self, frame: bytes, decode: Callable[[bytes], str]) -> str:
         await self._connect()
-        if not await self._drain():
+        if not await self._drain(_RESYNC_DRAIN_WAIT if self._resync else _DRAIN_WAIT):
             # The gateway closed the idle connection: reconnect once, transparently.
             _LOGGER.debug("gateway closed the idle connection, reconnecting")
             await self._close()
@@ -243,7 +254,8 @@ class InverterClient:
             await self._writer.drain()
             raw = await asyncio.wait_for(self._reader.readuntil(CR), self.timeout)
         except TimeoutError as err:
-            # Keep the connection; a late answer is discarded by _drain() next time.
+            # Drop the connection: a late answer must not reach the next command.
+            await self._close(resync=True)
             raise InverterTimeoutError(f"no answer to {frame!r} in {self.timeout} s") from err
         except asyncio.IncompleteReadError as err:
             await self._close()
@@ -271,19 +283,21 @@ class InverterClient:
             ) from err
         _LOGGER.debug("connected to %s:%s", self.host, self.port)
 
-    async def _drain(self) -> bool:
+    async def _drain(self, wait: float) -> bool:
         """Discard stale bytes; return False if the gateway closed the connection."""
         assert self._reader is not None
+        self._resync = False
         while True:
             try:
-                chunk = await asyncio.wait_for(self._reader.read(1024), _DRAIN_WAIT)
+                chunk = await asyncio.wait_for(self._reader.read(1024), wait)
             except TimeoutError:
                 return True
             if not chunk:
                 return False
             _LOGGER.debug("discarded stale bytes: %r", chunk)
 
-    async def _close(self) -> None:
+    async def _close(self, *, resync: bool = False) -> None:
+        self._resync = resync
         writer, self._reader, self._writer = self._writer, None, None
         if writer is None:
             return

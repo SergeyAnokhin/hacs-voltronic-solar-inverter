@@ -9,7 +9,8 @@ Elfin gateway (TCP 8899, one client)
    ^  PI30: CMD + CRC + CR / '(' payload CRC CR    H dialect: CMD + CR / '(' payload CR
 protocol/client.py    InverterClient: 1 persistent connection, asyncio.Lock,
    |                  read until CR, 2 s timeout, 1 retry for queries, 0.1 s gap,
-   |                  transparent reconnect; query() = Q + CRC, query_plain() = only
+   |                  reconnect after a timeout (late answers never reach the next
+   |                  command); query() = Q + CRC, query_plain() = only
    |                  PLAIN_QUERIES without CRC; write() = ACK/NAK, never retried
 protocol/parsers.py   QPIGS/QPIRI/QPIWS/QFLAG/QMOD/QVFW/QM*CHGCR/Q1/QBEQI -> dataclasses
 protocol/h_parsers.py HGEN/HEEP1/HEEP2/HTEMP/HGRID/HIMSG1 -> dataclasses

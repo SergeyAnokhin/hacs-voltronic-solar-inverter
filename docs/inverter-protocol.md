@@ -320,7 +320,7 @@ Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type
 
 ## Integration implementation notes
 
-- [`protocol/client.py`](../custom_components/voltronic_solar_inverter/protocol/client.py): one persistent connection, `asyncio.Lock`, read until CR, CRC check, 2 s timeout, one retry for queries (first-command-after-idle loss), stale bytes drained before each command, transparent reconnect when the gateway closed the connection, 0.1 s gap between exchanges. Writes are never retried.
+- [`protocol/client.py`](../custom_components/voltronic_solar_inverter/protocol/client.py): one persistent connection, `asyncio.Lock`, read until CR, CRC check, 2 s timeout, one retry for queries (first-command-after-idle loss), stale bytes drained before each command, connection dropped after a timeout (a late answer once reached the next command: `QMOD` got a `QPIGS` payload; a non-single-letter `QMOD` answer triggers one reconnect and re-ask), transparent reconnect when the gateway closed the connection, 0.1 s gap between exchanges. Writes are never retried.
 - Only answering commands are polled; see [integration.md](integration.md). H queries go out without CRC through `query_plain()`, which accepts only the owner-approved `PLAIN_QUERIES`; the dialect is detected at start-up with `QPRTL`.
 - H responses have no CRC, so a corrupted H answer can only be caught by the parsers (field count / number format).
 - The gateway address comes from the config flow (the prototype hard-codes `192.168.1.47:8899`).

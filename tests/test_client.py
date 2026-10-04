@@ -123,6 +123,43 @@ def test_late_answer_is_discarded_before_next_command():
     assert run(scenario()) == "B"
 
 
+def test_late_answer_after_timeout_does_not_shift_answers():
+    """Seen on the real unit: QPIGS answered after the timeout, then QMOD got a QPIGS payload."""
+    calls = 0
+
+    def responder(frame):
+        nonlocal calls
+        command = frame[:-3].decode()
+        if command == "QPIGS":
+            calls += 1
+            if calls == 1:
+                writer = gw.connections[-1][1]
+                asyncio.get_running_loop().call_later(0.25, writer._feed, reply(FULL["QPIGS"]))
+                return None
+        return [reply(FULL[command])]
+
+    gw = FakeGateway(responder)
+
+    async def scenario():
+        client = make_client(gw)
+        status = await client.read_general_status()
+        await asyncio.sleep(0.1)  # the late answer arrives meanwhile
+        return status, await client.read_mode()
+
+    status, mode = run(scenario())
+    assert status.battery_voltage == 25.60
+    assert mode == "battery"
+    assert len(gw.connections) == 2  # dropped after the timeout
+
+
+def test_out_of_sync_qmod_answer_is_asked_again():
+    answers = iter([FULL["QPIGS"], "B"])
+    gw = FakeGateway(lambda frame: [reply(next(answers))])
+    assert run(make_client(gw).read_mode()) == "battery"
+    assert gw.sent == [encode_frame("QMOD")] * 2
+    assert len(gw.connections) == 2
+
+
 def test_crc_error_is_retried():
     calls = 0
 
