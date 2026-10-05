@@ -1,9 +1,11 @@
-"""Numbers for charge currents and battery voltage thresholds.
+"""Numbers for charge currents and battery voltage thresholds, plus three
+HA-only settings: the inverter's self-consumption not seen by its sensors
+(battery mode / line mode / output off).
 
-Only set up when controls are enabled. Currents use the lists the inverter
-reports (QMCHGCR / QMUCHGCR); voltage thresholds exist only for 24 V systems,
-whose ranges are documented. Float voltage (PBFT) is not implemented: its
-range is undocumented (see docs/integration.md).
+Currents use the lists the inverter reports (QMCHGCR / QMUCHGCR); voltage
+thresholds exist only for 24 V systems, whose ranges are documented. Float
+voltage (PBFT) is not implemented: its range is undocumented (see
+docs/integration.md).
 """
 
 from __future__ import annotations
@@ -17,13 +19,20 @@ from homeassistant.components.number import (
     NumberEntity,
     NumberEntityDescription,
     NumberMode,
+    RestoreNumber,
 )
-from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfElectricPotential
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfPower,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import VoltronicConfigEntry
-from .entity import VoltronicControlEntity
+from .coordinator import VoltronicConfigEntry, VoltronicFastCoordinator
+from .entity import VoltronicControlEntity, VoltronicEntity
+from .power_balance import BATTERY, LINE, OUTPUT_OFF
 from .protocol import InvalidCommandError, RatedInfo, WriteCommand, commands
 
 PARALLEL_UPDATES = 1
@@ -108,6 +117,33 @@ async def async_setup_entry(
     if data.slow.data.rated.battery_rating_voltage == 24.0:
         descriptions += [_voltage_description(key) for key in commands.VOLTAGE_SETTINGS_24V]
     async_add_entities(VoltronicNumber(data.slow, d) for d in descriptions)
+    async_add_entities(
+        VoltronicSelfConsumptionNumber(data.fast, d, setting)
+        for d, setting in SELF_CONSUMPTION_NUMBERS
+    )
+
+
+def _self_consumption_description(key: str) -> NumberEntityDescription:
+    return NumberEntityDescription(
+        key=key,
+        translation_key=key,
+        entity_category=EntityCategory.CONFIG,
+        device_class=NumberDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        native_min_value=0,
+        native_max_value=500,
+        native_step=1,
+        mode=NumberMode.BOX,
+    )
+
+
+# Stored in HA only (never sent to the inverter): the inverter's own consumption
+# that its sensors do not show, per operating state.
+SELF_CONSUMPTION_NUMBERS: tuple[tuple[NumberEntityDescription, str], ...] = (
+    (_self_consumption_description("self_consumption_battery_mode"), BATTERY),
+    (_self_consumption_description("self_consumption_line_mode"), LINE),
+    (_self_consumption_description("self_consumption_output_off"), OUTPUT_OFF),
+)
 
 
 class VoltronicNumber(VoltronicControlEntity, NumberEntity):
@@ -119,3 +155,38 @@ class VoltronicNumber(VoltronicControlEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.async_send(lambda: self.entity_description.command_fn(value))
+
+
+class VoltronicSelfConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], RestoreNumber):
+    """User's estimate of the inverter's own consumption; restored after a restart."""
+
+    def __init__(
+        self,
+        coordinator: VoltronicFastCoordinator,
+        description: NumberEntityDescription,
+        setting: str,
+    ) -> None:
+        super().__init__(coordinator, description)
+        self._setting = setting
+
+    @property
+    def _values(self) -> dict[str, float]:
+        return self.coordinator.config_entry.runtime_data.self_consumption
+
+    @property
+    def available(self) -> bool:
+        return True  # a stored setting, not a reading
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last is not None and last.native_value is not None:
+            self._values[self._setting] = float(last.native_value)
+
+    @property
+    def native_value(self) -> float:
+        return self._values[self._setting]
+
+    async def async_set_native_value(self, value: float) -> None:
+        self._values[self._setting] = value
+        self.async_write_ha_state()

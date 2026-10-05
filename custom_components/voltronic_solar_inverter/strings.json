@@ -106,6 +106,12 @@
       "pv_power_max_10min": {
         "name": "PV power max (10 min)"
       },
+      "pv_power_calculated": {
+        "name": "PV power calculated"
+      },
+      "inverter_losses": {
+        "name": "Inverter losses"
+      },
       "pv_power_median_today": {
         "name": "PV power median today"
       },
@@ -597,6 +603,15 @@
       }
     },
     "number": {
+      "self_consumption_battery_mode": {
+        "name": "Self-consumption (battery mode)"
+      },
+      "self_consumption_line_mode": {
+        "name": "Self-consumption (line mode)"
+      },
+      "self_consumption_output_off": {
+        "name": "Self-consumption (output off)"
+      },
       "max_charging_current": {
         "name": "Max charging current"
       },

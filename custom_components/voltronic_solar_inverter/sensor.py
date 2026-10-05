@@ -53,6 +53,7 @@ from .coordinator import (
     VoltronicRuntimeData,
 )
 from .entity import VoltronicEntity, is_supported, remove_entities
+from .power_balance import inverter_losses, pv_power_calculated, self_consumption_key
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
 from .smoothing import DailyMax, SmoothedValue
 from .protocol.parsers import (
@@ -79,6 +80,13 @@ class VoltronicFastSensorDescription(SensorEntityDescription):
     smoothing_window: float = SMOOTHING_WINDOW  # smoothed sensors only
     smoothing_statistic: str = "mean"  # "mean", "median" or "max"
     smoothing_daily: bool = False  # statistic over the current local day instead of a window
+
+
+@dataclass(frozen=True, kw_only=True)
+class VoltronicBalanceSensorDescription(VoltronicFastSensorDescription):
+    """Smoothed value computed from the power balance and the self-consumption settings."""
+
+    balance_fn: Callable[[FastData, Mapping[str, float]], float | None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -566,6 +574,26 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     ),
 )
 
+# Power balance (power_balance.py), mean of the last 10 minutes: single samples
+# jump by ~25 W because the battery currents are whole amperes.
+def _balance(key: str, balance_fn) -> VoltronicBalanceSensorDescription:
+    return VoltronicBalanceSensorDescription(
+        # value_fn is unused: VoltronicBalanceSensor samples balance_fn
+        **_power(key, lambda d: None, smoothing_window=MEDIAN_WINDOW),
+        balance_fn=balance_fn,
+    )
+
+
+BALANCE_SENSORS: tuple[VoltronicBalanceSensorDescription, ...] = (
+    _balance("inverter_losses", lambda d, _: inverter_losses(d.status, d.mode, d.grid_power)),
+    _balance(
+        "pv_power_calculated",
+        lambda d, own: pv_power_calculated(
+            d.status, d.mode, d.grid_power, own[self_consumption_key(d.status, d.mode)]
+        ),
+    ),
+)
+
 # Highest value since midnight (HA local time); attribute ATTR_MAX_TIME = when it was reached.
 DAILY_MAX_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(
@@ -675,6 +703,7 @@ async def async_setup_entry(
     entities += [
         VoltronicSmoothedSensor(data.fast, d) for d in SMOOTHED_SENSORS if is_supported(d, identity)
     ]
+    entities += [VoltronicBalanceSensor(data.fast, d) for d in BALANCE_SENSORS]
     entities += [VoltronicDailyMaxSensor(data.fast, d) for d in DAILY_MAX_SENSORS]
     entities += [VoltronicSlowSensor(data.slow, d) for d in slow_descriptions]
     entities += [
@@ -715,8 +744,11 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
             heartbeat=SMOOTHING_HEARTBEAT,
         )
         if coordinator.data is not None:
-            self._smoother.add(time.monotonic(), description.value_fn(coordinator.data), self._day())
+            self._smoother.add(time.monotonic(), self._sample(), self._day())
         self._written_available = coordinator.last_update_success  # state written on add
+
+    def _sample(self) -> StateType:
+        return self.entity_description.value_fn(self.coordinator.data)
 
     def _day(self):
         return dt_util.now().date() if self.entity_description.smoothing_daily else None
@@ -729,14 +761,20 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         changed = False
         if self.coordinator.last_update_success:
-            changed = self._smoother.add(
-                time.monotonic(),
-                self.entity_description.value_fn(self.coordinator.data),
-                self._day(),
-            )
+            changed = self._smoother.add(time.monotonic(), self._sample(), self._day())
         if changed or self.available != self._written_available:
             self._written_available = self.available
             self.async_write_ha_state()
+
+
+class VoltronicBalanceSensor(VoltronicSmoothedSensor):
+    """Smoothed power-balance value; reads the self-consumption numbers from runtime data."""
+
+    entity_description: VoltronicBalanceSensorDescription
+
+    def _sample(self) -> StateType:
+        own = self.coordinator.config_entry.runtime_data.self_consumption
+        return self.entity_description.balance_fn(self.coordinator.data, own)
 
 
 class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):

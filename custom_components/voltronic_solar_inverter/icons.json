@@ -67,6 +67,12 @@
       "pv_power": {
         "default": "mdi:solar-power-variant-outline"
       },
+      "pv_power_calculated": {
+        "default": "mdi:solar-power-variant"
+      },
+      "inverter_losses": {
+        "default": "mdi:heat-wave"
+      },
       "pv_power_median_10min": {
         "default": "mdi:solar-power-variant-outline"
       },
@@ -103,6 +109,17 @@
       },
       "solar_supply_priority": {
         "default": "mdi:solar-power-variant"
+      }
+    },
+    "number": {
+      "self_consumption_battery_mode": {
+        "default": "mdi:battery-arrow-down"
+      },
+      "self_consumption_line_mode": {
+        "default": "mdi:transmission-tower"
+      },
+      "self_consumption_output_off": {
+        "default": "mdi:power-plug-off"
       }
     }
   }

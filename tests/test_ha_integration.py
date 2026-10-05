@@ -626,3 +626,24 @@ async def test_diagnostics_redacts_serial(hass: HomeAssistant, inverter: Inverte
     assert result["raw_responses"]["QPIGS"] == FULL["QPIGS"]
     assert result["slow"]["data"]["rated"]["output_source_priority"] == 1
     assert result["raw_responses"]["HEEP2"] == H_LBU["HEEP2"]
+
+
+async def test_self_consumption_and_balance_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.table["QPIGS"] = answered("snapshot_B_night_load_300w.json")["QPIGS"]  # 25.10 V x 15 A discharge, 317 W load
+    entry = await setup(hass)
+    battery_id = f"number.{PREFIX}_self_consumption_battery_mode"
+    assert hass.states.get(battery_id).state == "0.0"
+    assert hass.states.get(f"number.{PREFIX}_self_consumption_line_mode").state == "16.0"
+    assert hass.states.get(f"number.{PREFIX}_self_consumption_output_off").state == "13.0"
+    assert hass.states.get(f"sensor.{PREFIX}_inverter_losses").state == "60"  # 59.5 W, whole watts
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "0"
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": battery_id, "value": 100}, blocking=True
+    )
+    assert entry.runtime_data.self_consumption["battery"] == 100
+    await entry.runtime_data.fast.async_refresh()
+    await hass.async_block_till_done()
+    # Mean of 0 and 40.5 W -> 20 W: published (drop from 0 is >= 20 W).
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "20"
+    assert inverter.writes == []  # HA-only setting, nothing sent

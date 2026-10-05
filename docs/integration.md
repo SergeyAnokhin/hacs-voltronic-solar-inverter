@@ -42,10 +42,11 @@ Only answering commands are polled (see "No reply" in [inverter-protocol.md](inv
 |---|---|
 | [`__init__.py`](../custom_components/voltronic_solar_inverter/__init__.py) | Setup/unload; picks platforms; removes control entities from the registry when controls are off |
 | [`config_flow.py`](../custom_components/voltronic_solar_inverter/config_flow.py) | User step (host, port, both intervals; probes `QPI`/`QMN`/`QID`, unique id = serial). Options flow (`OptionsFlowWithReload`): the two intervals |
-| [`coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py) | `FastData`, `SlowData`, `VoltronicRuntimeData`, the two coordinators |
+| [`coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py) | `FastData`, `SlowData`, `VoltronicRuntimeData` (incl. the `self_consumption` settings), the two coordinators |
+| [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py) | Power balance (no HA imports): inverter losses, calculated PV power, which self-consumption setting applies, measured defaults |
 | [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | `VoltronicEntity` (unique id `<serial>_<key>`, device info); `VoltronicControlEntity.async_send()` = the single write path |
 | [`sensor.py`](../custom_components/voltronic_solar_inverter/sensor.py), [`binary_sensor.py`](../custom_components/voltronic_solar_inverter/binary_sensor.py) | Read entities, declared as `EntityDescription` tuples with `value_fn` |
-| [`switch.py`](../custom_components/voltronic_solar_inverter/switch.py), [`select.py`](../custom_components/voltronic_solar_inverter/select.py), [`number.py`](../custom_components/voltronic_solar_inverter/number.py) | Control entities |
+| [`switch.py`](../custom_components/voltronic_solar_inverter/switch.py), [`select.py`](../custom_components/voltronic_solar_inverter/select.py), [`number.py`](../custom_components/voltronic_solar_inverter/number.py) | Control entities; `number.py` also holds the three HA-only self-consumption numbers |
 | [`diagnostics.py`](../custom_components/voltronic_solar_inverter/diagnostics.py) | Parsed data + last raw payloads; serial, unique id and host redacted |
 | [`strings.json`](../custom_components/voltronic_solar_inverter/strings.json) = [`translations/en.json`](../custom_components/voltronic_solar_inverter/translations/en.json) | All UI text (English only; keep the two files identical) |
 | [`icons.json`](../custom_components/voltronic_solar_inverter/icons.json) | Icons for entities without a device class |
@@ -59,7 +60,8 @@ Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter
 |---|---|---|
 | Live sensors (fast) | grid voltage/frequency, AC output voltage/frequency, apparent power (VA), active power (W), load %, battery voltage, charge current, discharge current, battery power (signed, derived V × (I<sub>chg</sub> − I<sub>dis</sub>)), heat-sink temperature, PV current, PV voltage, PV power raw (every sample), PV power (smoothed, see below), PV power median / max (10 min), PV power median / max today, mode (enum incl. `charging` = `QMOD` C, output off; an unknown letter gives state *unknown* and one log warning, the other fast entities stay available); active power also as `_raw`/smoothed pair | `QPIGS` 0–6, 8, 9, 11–13, 15, 19; `QMOD` |
 | Live sensors, off | bus voltage (diag), SCC battery voltage (diag), battery level estimate (voltage-based %, **not SOC**) | `QPIGS` 7, 14, 10 |
-| Grid power (fast, H) | signed W as `grid_power_raw` + smoothed `grid_power`; sign convention not verified yet | `HGRID[6]` |
+| Grid power (fast, H) | signed W as `grid_power_raw` + smoothed `grid_power`; positive = import (verified in mode L on 2026-10-05); reads ~16 W + ~2 % low against an external meter | `HGRID[6]` |
+| Power balance (fast) | *Inverter losses* (PV `QPIGS[19]` + battery V × (I<sub>dis</sub> − I<sub>chg</sub>) + grid − load) and *PV power calculated* (load + self-consumption − battery − grid, ≥ 0); both the 10 min mean with the smoothed publish rules. Unknown in mode L without `HGRID`; grid counts as 0 in other modes without it. See [Power balance](#power-balance-and-self-consumption) | `QPIGS`, `QMOD`, `HGRID[6]`, self-consumption numbers |
 | PV energy (slow, H) | today, this month, this year, total (kWh, `total_increasing`; the inverter's own counters, match the vendor app) | `HGEN` 2–5 |
 | Schedules (slow, H) | AC output on / off time (P48/P49, verified), AC charger start / stop time (P46/P47, verified), shown as `HH:00` | `HEEP2[12]`, `HEEP2[11]` |
 | Clock (diag, slow, H) | inverter clock (timestamp, inverter local time interpreted in HA's time zone), clock offset (min, inverter − HA; ~ −10 on the test unit) | `HGEN` 0–1 |
@@ -83,6 +85,8 @@ Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter
 | Number: max charging current | `MNCHGC<nnn>` | values from `QMCHGCR` (10…80 A, step 10) | ACKed + read back on the sibling VMII-6200; unverified here |
 | Number: max utility charging current | `MUCHGC<nnn>` | values from `QMUCHGCR` (2, 10…60 A) | unverified |
 | Numbers: back to utility / back to battery / cut-off / bulk voltage | `PBCV` / `PBDV` / `PSDV` / `PCVV` `<nn.n>` | 22.0–25.5 step 0.5 / 24.0–29.0 step 0.5 / 20.0–26.0 step 0.1 / 24.0–30.0 step 0.1 | created only if battery rating = 24 V; ranges from the Vevor manual; unverified (`PBCV`/`PBDV` ACKed on the sibling; `PSDV` NAKed there, `PCVV` "not supported" there) |
+
+**HA-only numbers (config, never sent to the inverter):** *Self-consumption (battery mode / line mode / output off)*, 0–500 W, restored after a restart (`RestoreNumber`), read by *PV power calculated*. Defaults 0 / 16 / 13 W (owner's measurement, see below).
 
 Codes not confirmed by the owner (output priority 0 "solar first (SUB)", 2 "utility first"; charger priority 0 "solar first", 1 "solar and utility") are rejected by the builders and not offered in the selects. To publish one after the owner confirms it, add the code to `OUTPUT_SOURCE_PRIORITIES_VERIFIED` / `CHARGER_SOURCE_PRIORITIES_VERIFIED` in [`parsers.py`](../custom_components/voltronic_solar_inverter/protocol/parsers.py) and add the `select` state string.
 
@@ -109,6 +113,23 @@ Fast coordinator (default 10 s): live values — the sensors/binary sensors from
 - `HIDDEN_KEYS` (ratings, identity) are created hidden; `DISABLED_KEYS` (equalization) are created disabled; both in `const.py`.
 - Config entry **1.2** (`async_migrate_entry` in [`__init__.py`](../custom_components/voltronic_solar_inverter/__init__.py)) applies the same defaults to entities created before, unless the user already hid/disabled them, and renames `pv_charging_power` → `pv_power` (same registry entry, so the recorder keeps the history). Registry defaults alone never touch existing entities.
 
+### Power balance and self-consumption
+
+```text
+PV + battery discharge + grid import = load + battery charge + inverter consumption
+```
+
+The self-consumption numbers hold the part of the inverter's own consumption that **its sensors do not show**, not its total draw. The setting used is picked by [`power_balance.self_consumption_key`](../custom_components/voltronic_solar_inverter/power_balance.py): output off (`QPIGS` status 2 b9 = 0, i.e. modes S/C) → *output off*; mode L → *line mode*; otherwise *battery mode*. Measured on the owner's VMII-4000 on 2026-10-05 with an external meter on the AC input (log: [`tests/fixtures/balance_log_2026-10-05_night.csv`](../tests/fixtures/balance_log_2026-10-05_night.csv), tool: [`tools/balance_logger.py`](../tools/balance_logger.py)):
+
+| State (no load) | Real draw (meter) | Inverter shows | Default |
+|---|---|---|---|
+| Output off (S), grid present | 13 W | `HGRID` 0 W | 13 W |
+| Line mode (L), output on, charger flagged on with 0 A | 40–45 W | `HGRID` ~25 W | 16 W |
+| Line mode, 1.3 kW load | ~1350 W input | `HGRID` ~1308 W, load ~1280 W | (16 W + ~2 %) |
+| Battery mode (B), ~220 W load | not measured yet | battery 13.6 A × V ≈ 313 W (BMS: 11.7 A ≈ 283 W) | 0 W, to be measured |
+
+Single samples are noisy (battery currents are whole amperes, ~25 W on 24 V), hence the 10 min mean.
+
 ## How to add a read entity
 
 1. Make sure the field is parsed in [`parsers.py`](../custom_components/voltronic_solar_inverter/protocol/parsers.py) (add a dataclass field + a test in [`tests/test_parsers.py`](../tests/test_parsers.py) against a fixture).
@@ -122,4 +143,4 @@ Logger `custom_components.voltronic_solar_inverter` (the client logs under `….
 
 ## Tests
 
-See README "Development". Protocol tests run with plain `pytest`; [`tests/test_ha_integration.py`](../tests/test_ha_integration.py) (config flow, entities, control entities with a fake gateway, diagnostics) needs `pytest-homeassistant-custom-component`. Home Assistant does not support Windows: there the HA tests need Python ≥ 3.14, a venv path short enough for `MAX_PATH`, and local stubs for `fcntl`/`resource` plus a `socket.socketpair` shim; on Linux/WSL/CI they run as is.
+See README "Development". Protocol tests run with plain `pytest`; [`tests/test_ha_integration.py`](../tests/test_ha_integration.py) (config flow, entities, control entities with a fake gateway, diagnostics) needs `pytest-homeassistant-custom-component`. Home Assistant does not support Windows: there the HA tests need Python ≥ 3.14, a venv path short enough for `MAX_PATH`, and local stubs for `fcntl`/`resource` plus a `socket.socketpair` shim; on Linux/WSL/CI they run as is. A ready Windows venv on the owner's PC: `%TEMP%si-ha` (Python 3.14); put a folder with `fcntl.py` (no-op `flock`/`fcntl`/`ioctl`), `resource.py` (`getrlimit`/`setrlimit`) and a `sitecustomize.py` on `PYTHONPATH`, where `sitecustomize` replaces `socket.socketpair` with a version that keeps a reference to the original `socket.socket` class and uses `lsock._accept()` (pytest-socket blocks AF_INET sockets created later).

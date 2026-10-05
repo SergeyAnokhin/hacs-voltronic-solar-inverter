@@ -47,7 +47,7 @@ This page summarizes the read-only protocol research on the Vevor GD5548JMH (`VM
 - Load (output) energy counters: in neither dialect.
 - True SOC: no BMS link. Every battery % (`QPIGS[10]`, `QBV`, `HBAT[2]`, the app) is the same voltage estimate, and it jumped 95 % / 15 % / 50 % within an hour.
 - Fault history `QPIHF`/`QPICF`: `NAK` (fault recording P25 is off).
-- Inverter idle consumption: below the 1 A resolution.
+- Inverter idle consumption: below the 1 A resolution of the battery current; measured from the grid side instead on 2026-10-05 (13 W output off, 40–45 W line mode no load; see [integration.md](integration.md#power-balance-and-self-consumption)).
 - UPS-protocol `QWS` stays zero during real warnings.
 - **No known command writes P46–P49** (searched every public spec and the dongle captures).
 
@@ -57,7 +57,7 @@ This page summarizes the read-only protocol research on the Vevor GD5548JMH (`VM
 |---|---|---|
 | 1 | All PV-side fields: `QPIGS` 12–14/19, `HPV`, `HPVB`, `QPIWS` a0 "PV loss", `Q1` 2/3/16 timers, absorb/float stages (`Q1[17]` 12/13), status bits b1/b10 | **Daytime snapshot with PV connected**, again while charging reaches absorb/float |
 | 2 | Does `HGEN` count up live, and when does "today" roll over (inverter clock)? | Read `HGEN` every ~10 min during production and once after midnight |
-| 3 | `HGRID[6]` signed grid power, flow direction code | Snapshot in mode L with load (and while AC charging at 01–02) |
+| 3 | ~~`HGRID[6]` sign~~ verified 2026-10-05 (+ = import, 1 W steps, occasional single 0 samples, ~16 W + ~2 % low vs an external meter); flow direction code still unknown | Snapshot while AC charging with real current |
 | 4 | Remaining characters of packed `HEEP1[3]` (`01210110230`; tail `230` = output V?), `HEEP2[16]` (`50000`) | Delta method: P10 output voltage, P44, P50, dual-output SOC / discharge time |
 | 5 | Dual output: which of `HEEP1[11]`/`HEEP2[2]` is the SOC point, which of `HEEP1[13]`/`HEEP2[16]` the recover SOC, discharge time position | Delta method on the dual-output programs |
 | 6 | P44 (feed-in, owner keeps it off) and P50 (grid regulation) read positions | Delta method; leave P44 off afterwards |
