@@ -55,7 +55,7 @@ Setup reads the protocol, model and serial number (`QPI`, `QMN`, `QID`); the ser
 
 One device (model, serial number, firmware) with:
 
-- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, PV voltage / current, **PV power** (smoothed, records few rows) and **PV power raw** (every sample, for live dashboards), **PV power median / max (10 min)** and **PV power median / max today** (the daily ones start over at midnight; max today is restored after a restart), the same smoothed / raw pairs for grid power and **Load power** (AC output, W), **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**, **Inverter losses** and **PV power calculated** (10-minute means from the power balance, see below).
+- **Sensors:** grid voltage / frequency, grid power (signed W), AC output voltage / frequency, output apparent power (VA) and power (W), load %, battery voltage, charge current, discharge current, battery power (signed, + = charging), heat-sink, inverter, transformer and PV temperatures, **PV voltage** (smoothed) and **PV voltage raw** (every sample), PV current, **PV power** (smoothed, records few rows) and **PV power raw** (every sample, for live dashboards), **PV power median / max (10 min)** and **PV power median / max today** (the daily ones start over at midnight; max today is restored after a restart), the same smoothed / raw pairs for grid power and **Load power** (AC output, W), **PV energy today / this month / this year / total (kWh, from the inverter's own counters)**, mode (power on, standby = output off, line, battery, fault, power saving), charge stage (idle, bulk, absorption, float), **AC output on / off time (programs 48/49)** and **AC charger start / stop time (programs 46/47)**, **Inverter losses** and **PV power calculated** (10-minute means from the power balance, see below), **Load / Grid / Battery / Balance daily energy** (kWh since midnight, see [Energy](#energy-kwh)).
 - **Diagnostic sensors:** current settings and ratings (battery type, AC input range, float voltage, battery low-alarm voltage; the settings that have a control entity below, e.g. priorities, charge currents and the 24 V voltage thresholds, are shown by that control instead of a duplicate sensor), inverter clock and its offset from Home Assistant's time, fan speeds. **Hidden by default** (static values that never change): rated output values, battery rating voltage, serial number, firmware. Disabled by default: equalization settings, bus voltage, solar-charger battery voltage, battery level estimate, grid ratings, machine type, topology, output mode, second-output (dual output) thresholds, BMS SOC thresholds, grid-tie current, firmware date.
 - **Binary sensors:** AC output, load on, charging, solar charging, grid charging, SBU priority, fault, warning (with the active items as attributes); one diagnostic problem sensor per warning/fault bit (grid lost, battery low, overload, over-temperature, … — five on by default); disabled by default: equalization enabled / active.
 - **Self-consumption numbers (battery mode / line mode / output off, W):** stored in Home Assistant only, never sent to the inverter. They hold the inverter's own consumption that its sensors do not show and feed *PV power calculated* = load + self-consumption − battery − grid (≥ 0), which reveals PV power the inverter reports as 0. Defaults 0 / 16 / 13 W were measured on the test unit with an external meter; see [docs/integration.md](docs/integration.md#power-balance-and-self-consumption).
@@ -66,12 +66,18 @@ Full list with protocol sources: [docs/integration.md](docs/integration.md).
 ## Energy (kWh)
 
 - **PV production:** use *PV energy total* (`total_increasing`, kWh) directly in *Settings → Dashboards → Energy → Solar production*. It is the inverter's own counter (same value as the vendor app), read with the CRC-less H protocol of units that support it.
-- **Load (output) energy:** the inverter has no load counter. Create one: *Settings → Devices & services → Helpers → Create helper → Integral sensor* (Riemann sum), input `sensor.<device>_ac_output_power`, method *Left*, metric prefix *k*, time unit *hours*; optionally add a *Utility meter* for daily/monthly totals. Its accuracy depends on the live values interval.
+- **Daily energy: load, grid, battery, balance** (kWh since local midnight, start over at midnight, restored after a restart on the same day). The inverter has no counters for these, so the integration integrates the power itself, with the same trapezoidal rule as Home Assistant's *Integral* (Riemann sum) helper, over **every** poll (not over the smoothed sensors, whose recorded values lag by up to 10 % / 10 min and would bias the sum). Only the writes are thinned out: a new state when the value grew by ≥ 0.05 kWh, or every 10 min with any change. A gap longer than three live-value intervals (lost connection, restart) adds nothing.
+  - *Load daily energy* (`…_load_daily_energy`): AC output power (*Load power*).
+  - *Grid daily energy* (`…_grid_daily_energy`): grid power drawn (export, if any, counts as 0). Only with the H protocol.
+  - *Battery daily energy* (`…_battery_daily_energy`): net energy into the battery, **+** = charged more than discharged today, **−** = the battery ended the day emptier. From the inverter's battery currents (whole amperes, and ~15 % off the BMS in one test), so treat it as rough.
+  - *Balance daily energy* (`…_balance_daily_energy`): load + battery − grid − self-consumption, i.e. what the PV really gave after all inverter losses. A battery that charges or empties does not change it. **> 0:** the system produced more than it consumed itself today; **< 0:** it cost more than it gave (night, losses, charging from the grid). The *Self-consumption* settings (the part the inverter's sensors never show, see *Power balance*) are subtracted for the mode the inverter is in. Only with the H protocol.
+  - Signed ones (battery, balance) are `total` with `last_reset` = midnight; load and grid are `total_increasing`.
+  - For month/year totals, add a *Utility meter* helper on top of these, or use their long-term statistics.
 - Inverters without the H protocol get no PV energy sensors; integrate `…_pv_power` the same way.
 
 ## Fast dashboard, small database
 
-Every changed value is a new row in the recorder database (Home Assistant writes a state only when it changes, keeps raw history for 10 days, and 5-minute/hourly long-term statistics for every sensor with a state class). With a short *Live values interval* (down to 2 s) fast-changing sensors would fill it, so the integration offers a **raw / normal pair** (PV power, grid power, AC output power):
+Every changed value is a new row in the recorder database (Home Assistant writes a state only when it changes, keeps raw history for 10 days, and 5-minute/hourly long-term statistics for every sensor with a state class). With a short *Live values interval* (down to 2 s) fast-changing sensors would fill it, so the integration offers a **raw / normal pair** (PV power, PV voltage, grid power, AC output power):
 
 | Entity | Updates | Use it for |
 |---|---|---|
@@ -79,12 +85,11 @@ Every changed value is a new row in the recorder database (Home Assistant writes
 | `sensor.<device>_pv_power` (*PV power*) | mean of the last 60 s, written only when it moves by ≥ 10 % (and ≥ 20 W), drops to 0, or after 10 min with any change | history graphs, statistics, automations; the dashboard does not jump |
 | `sensor.<device>_pv_power_median_10min` (*PV power median (10 min)*) | median of the last 10 min, same write rules | how the sun has really been doing lately, without cloud spikes |
 | `sensor.<device>_pv_power_max_10min` (*PV power max (10 min)*) | maximum of the last 10 min, same write rules | recent peak |
-| `sensor.<device>_pv_power_median_today` (*PV power median today*) | median since midnight, same write rules; starts over at midnight and after a restart | typical power today |
 | `sensor.<device>_pv_power_max_today` (*PV power max today*) | written only when a new maximum is reached; starts over at midnight | today's peak; survives a restart |
 
 The same *max today* rule exists for the measured currents: `pv_current_max_today` (*PV current max today*), `battery_charge_current_max_today` and `battery_discharge_current_max_today` (whole amperes). Every *max today* sensor has the attribute `max_time` (*Time of maximum*): the local time when today's maximum was first reached (also restored after a restart). The inverter reports no grid input or AC output current, so there is no maximum for those.
 
-`grid_power` / `grid_power_raw` and `ac_output_active_power` (*Load power*, the output in W) / `ac_output_active_power_raw` follow the same pair rule. Values are rounded before they reach the state (and so the database): battery-side and PV voltages to 0.1 V, grid / AC output voltages and all currents to whole numbers.
+`grid_power` / `grid_power_raw` and `ac_output_active_power` (*Load power*, the output in W) / `ac_output_active_power_raw` follow the same pair rule. `pv_input_voltage` / `pv_input_voltage_raw` too, with the voltage thresholds: ≥ 5 % and ≥ 1 V instead of ≥ 10 % / ≥ 20 W. Values are rounded before they reach the state (and so the database): battery-side and PV voltages to 0.1 V, grid / AC output voltages and all currents to whole numbers.
 
 Exclude the raw sensors in `configuration.yaml`:
 
@@ -95,7 +100,7 @@ recorder:
       - sensor.inverter_vmii_4000_*_raw
 ```
 
-Entity ids assume the default device name *Inverter VMII-4000*. Do **not** exclude the *PV energy* sensors: the Energy dashboard needs their recorded statistics.
+Entity ids assume the default device name *Inverter VMII-4000*. Do **not** exclude the *PV energy* or the *… daily energy* sensors: the Energy dashboard needs their recorded statistics.
 
 For other sensors you can build the same pattern with Home Assistant helpers: a *Statistics* helper (UI) or the YAML *Filter* integration (`time_simple_moving_average` + `time_throttle`) for a smoothed copy, then exclude the original from the recorder.
 

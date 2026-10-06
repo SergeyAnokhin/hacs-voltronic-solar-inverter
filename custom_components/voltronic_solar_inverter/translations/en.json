@@ -91,6 +91,9 @@
       "pv_input_current": {
         "name": "PV current"
       },
+      "pv_input_voltage_raw": {
+        "name": "PV voltage raw"
+      },
       "pv_input_voltage": {
         "name": "PV voltage"
       },
@@ -112,8 +115,17 @@
       "inverter_losses": {
         "name": "Inverter losses"
       },
-      "pv_power_median_today": {
-        "name": "PV power median today"
+      "load_daily_energy": {
+        "name": "Load daily energy"
+      },
+      "grid_daily_energy": {
+        "name": "Grid daily energy"
+      },
+      "battery_daily_energy": {
+        "name": "Battery daily energy"
+      },
+      "balance_daily_energy": {
+        "name": "Balance daily energy"
       },
       "pv_power_max_today": {
         "name": "PV power max today",

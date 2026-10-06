@@ -55,3 +55,17 @@ def test_self_consumption_key():
     assert balance.self_consumption_key(LOAD, "standby") == "battery"  # status 2 b9 (output on) wins
     standby = parse_qpigs(answered("snapshot_S_night_output_off.json")["QPIGS"])
     assert balance.self_consumption_key(standby, "standby") == "output_off"
+
+
+def test_net_generation():
+    # Night on battery: 317 W load - 376.5 W discharge = -59.5 W (losses only, no PV).
+    assert balance.net_generation(LOAD, 0, 0) == -59.5
+    # The unseen own consumption is a loss too.
+    assert balance.net_generation(LOAD, 0, 10) == -69.5
+    # Grid export does not count as negative import.
+    assert balance.net_generation(LOAD, -50, 0) == -59.5
+    assert balance.net_generation(LOAD, None, 0) is None
+    # Line mode, AC charging: all of load + charge came from the grid (and some more).
+    s = AC_CHARGING
+    charge = s.battery_voltage * s.battery_charge_current
+    assert balance.net_generation(s, 400, 16) == round(s.ac_output_active_power + charge - 400 - 16, 1)

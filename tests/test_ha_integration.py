@@ -1,4 +1,4 @@
-"""Home Assistant level tests: config flow, entities, control entities, diagnostics.
+﻿"""Home Assistant level tests: config flow, entities, control entities, diagnostics.
 
 Needs pytest-homeassistant-custom-component; skipped otherwise. The inverter is
 replaced by a fake gateway answering from recorded fixtures (no real socket).
@@ -6,6 +6,7 @@ replaced by a fake gateway answering from recorded fixtures (no real socket).
 
 from __future__ import annotations
 
+import time
 from unittest.mock import patch
 
 import pytest
@@ -263,14 +264,14 @@ async def test_connection_loss_makes_entities_unavailable(
     for _ in range(MAX_MISSED_UPDATES):
         await entry.runtime_data.fast.async_refresh()
         await hass.async_block_till_done()
-        assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "237.8"
+        assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "238"
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == STATE_UNAVAILABLE
     inverter.offline = False
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "237.8"
+    assert hass.states.get(f"sensor.{PREFIX}_grid_voltage").state == "238"
 
 
 async def test_unknown_mode_does_not_fail_setup(hass: HomeAssistant, inverter: Inverter) -> None:
@@ -515,15 +516,41 @@ async def test_pv_power_raw_and_smoothed(hass: HomeAssistant, inverter: Inverter
     assert hass.states.get(smooth_id).state != STATE_UNAVAILABLE
 
 
+async def test_pv_voltage_raw_and_smoothed(hass: HomeAssistant, inverter: Inverter) -> None:
+    fields = FULL["QPIGS"].split()
+    entry = await setup(hass)
+    live_id = f"sensor.{PREFIX}_pv_voltage_raw"
+    smooth_id = f"sensor.{PREFIX}_pv_voltage"
+    start = float(hass.states.get(live_id).state)
+    assert float(hass.states.get(smooth_id).state) == start
+
+    async def poll(volts: float) -> None:
+        f = list(fields)
+        f[13] = f"{volts:05.1f}"
+        inverter.table["QPIGS"] = " ".join(f)
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
+
+    # A +0.5 V wobble moves the live value only.
+    await poll(start + 0.5)
+    assert float(hass.states.get(live_id).state) == start + 0.5
+    assert float(hass.states.get(smooth_id).state) == start
+
+    # A real drop: the mean falls by more than the threshold and is published.
+    await poll(start - 40)
+    await poll(start - 40)
+    assert float(hass.states.get(live_id).state) == start - 40
+    assert float(hass.states.get(smooth_id).state) < start - 5
+
+
 async def test_pv_power_median_and_daily_max(hass: HomeAssistant, inverter: Inverter) -> None:
     inverter.table["QPIGS"] = qpigs_with_pv_power(1000)
     entry = await setup(hass)
-    median_id = f"sensor.{PREFIX}_pv_power_median_10min"
+    median_id = f"sensor.{PREFIX}_pv_power_median_10_min"
     max_id = f"sensor.{PREFIX}_pv_power_max_today"
     assert hass.states.get(median_id).state == "1000"
     assert hass.states.get(max_id).state == "1000"
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10min").state == "1000"
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_median_today").state == "1000"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10_min").state == "1000"
 
     for watts in (1500, 100, 900):
         inverter.table["QPIGS"] = qpigs_with_pv_power(watts)
@@ -532,7 +559,7 @@ async def test_pv_power_median_and_daily_max(hass: HomeAssistant, inverter: Inve
     # medians: 1250 and 1000 are published, 950 is not (< 10 % away from 1000)
     assert hass.states.get(max_id).state == "1500"
     assert hass.states.get(median_id).state == "1000"
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10min").state == "1500"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_max_10_min").state == "1500"
 
 
 async def test_daily_max_currents_and_time(hass: HomeAssistant, inverter: Inverter) -> None:
@@ -647,3 +674,37 @@ async def test_self_consumption_and_balance_sensors(hass: HomeAssistant, inverte
     # Mean of 0 and 40.5 W -> 20 W: published (drop from 0 is >= 20 W).
     assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "20"
     assert inverter.writes == []  # HA-only setting, nothing sent
+
+
+async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
+    entry = await setup(hass)
+    for key in ("load", "grid", "battery", "balance"):
+        state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
+        assert state.state == "0.0", key  # first sample: nothing integrated yet
+        assert state.attributes["unit_of_measurement"] == "kWh"
+        assert state.attributes["device_class"] == "energy"
+    for key in ("battery", "balance"):  # signed
+        state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
+        assert state.attributes["state_class"] == "total"
+        assert dt_util.parse_datetime(state.attributes["last_reset"]) == dt_util.start_of_local_day()
+    assert hass.states.get(f"sensor.{PREFIX}_load_daily_energy").attributes["state_class"] == (
+        "total_increasing"
+    )
+
+    # One hour later, in one step longer than the allowed gap: nothing is added.
+    with patch(
+        "custom_components.voltronic_solar_inverter.sensor.time",
+        monotonic=lambda: time.monotonic() + 3600,
+    ):
+        await entry.runtime_data.fast.async_refresh()
+        await hass.async_block_till_done()
+    assert hass.states.get(f"sensor.{PREFIX}_load_daily_energy").state == "0.0"
+
+
+async def test_daily_energy_needs_grid_power(hass: HomeAssistant, inverter: Inverter) -> None:
+    inverter.plain.clear()
+    await setup(hass)
+    assert hass.states.get(f"sensor.{PREFIX}_load_daily_energy") is not None
+    assert hass.states.get(f"sensor.{PREFIX}_battery_daily_energy") is not None
+    assert hass.states.get(f"sensor.{PREFIX}_grid_daily_energy") is None
+    assert hass.states.get(f"sensor.{PREFIX}_balance_daily_energy") is None

@@ -41,6 +41,58 @@ class DailyMax:
         return False
 
 
+class DailyEnergy:
+    """Energy since local midnight (kWh) from power samples (W); starts over on a new day.
+
+    Integrates every sample with the trapezoidal rule, the default method of
+    Home Assistant's Riemann sum integral helper. A gap longer than ``max_gap``
+    seconds (lost connection, restart) adds nothing. The published (recorded)
+    value changes only when it moved by ``step`` kWh, after ``heartbeat`` seconds
+    with any change, or on a new day.
+    """
+
+    def __init__(
+        self, *, max_gap: float, step: float = 0.05, heartbeat: float = 600.0, precision: int = 2
+    ) -> None:
+        self.max_gap = max_gap
+        self.step = step
+        self.heartbeat = heartbeat
+        self.precision = precision
+        self.day: date | None = None
+        self.value: float | None = None  # published value
+        self._total = 0.0  # kWh, not rounded
+        self._last: tuple[float, float] | None = None  # (monotonic time, W)
+        self._published_at: float | None = None
+
+    def restore(self, day: date, value: float) -> None:
+        """Take over a value stored earlier the same day (after a restart)."""
+        self.day, self.value, self._total = day, value, value
+
+    def add(self, day: date, now: float, power: float | None) -> bool:
+        """Add a sample taken on ``day`` at monotonic time ``now``; True if the published value changed."""
+        if power is None:
+            self._last = None
+            return False
+        new_day = day != self.day
+        if new_day:
+            self.day, self._total = day, 0.0
+        if self._last is not None and 0 < now - self._last[0] <= self.max_gap:
+            self._total += (self._last[1] + power) / 2 * (now - self._last[0]) / 3_600_000
+        self._last = (now, float(power))
+        value = round(self._total, self.precision)
+        if not new_day and self.value is not None and self._published_at is not None:
+            if value == self.value:
+                return False
+            if abs(value - self.value) < self.step and now - self._published_at < self.heartbeat:
+                return False
+        if not new_day and value == self.value:
+            self._published_at = now  # restored value, nothing new to write
+            return False
+        self.value = value
+        self._published_at = now
+        return True
+
+
 class SmoothedValue:
     """Time-window mean (or median) that changes its published value only on significant moves."""
 
@@ -62,22 +114,12 @@ class SmoothedValue:
         self.precision = precision
         self._samples: deque[tuple[float, float]] = deque()
         self.value: float | None = None  # published value
-        self._day: date | None = None
         self._published_at: float | None = None
 
-    def add(self, now: float, sample: float | None, day: date | None = None) -> bool:
-        """Add a sample taken at monotonic time ``now``; True if the published value changed.
-
-        With ``day`` (use ``window=inf``) the statistic covers the current day only:
-        a new day drops all samples and publishes afresh.
-        """
+    def add(self, now: float, sample: float | None) -> bool:
+        """Add a sample taken at monotonic time ``now``; True if the published value changed."""
         if sample is None:
             return False
-        if day != self._day:
-            self._day = day
-            if day is not None and self._samples:
-                self._samples.clear()
-                self.value = None
         self._samples.append((now, float(sample)))
         while self._samples and self._samples[0][0] < now - self.window:
             self._samples.popleft()

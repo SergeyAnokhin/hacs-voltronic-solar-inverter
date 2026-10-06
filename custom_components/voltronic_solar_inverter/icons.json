@@ -10,6 +10,9 @@
       "battery_capacity_estimate": {
         "default": "mdi:battery-unknown"
       },
+      "pv_input_voltage_raw": {
+        "default": "mdi:solar-panel"
+      },
       "pv_input_voltage": {
         "default": "mdi:solar-panel"
       },
@@ -73,6 +76,18 @@
       "inverter_losses": {
         "default": "mdi:heat-wave"
       },
+      "load_daily_energy": {
+        "default": "mdi:home-lightning-bolt"
+      },
+      "grid_daily_energy": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "battery_daily_energy": {
+        "default": "mdi:battery-sync"
+      },
+      "balance_daily_energy": {
+        "default": "mdi:scale-balance"
+      },
       "pv_power_median_10min": {
         "default": "mdi:solar-power-variant-outline"
       },
@@ -81,9 +96,6 @@
       },
       "pv_power_max_10min": {
         "default": "mdi:solar-power"
-      },
-      "pv_power_median_today": {
-        "default": "mdi:solar-power-variant-outline"
       },
       "pv_input_current_max_today": {
         "default": "mdi:solar-power"

@@ -71,9 +71,17 @@ RENAMED_KEYS: Final = {"pv_charging_power": "pv_power"}
 SMOOTHING_WINDOW: Final = 60.0
 SMOOTHING_RELATIVE_THRESHOLD: Final = 0.10
 SMOOTHING_ABSOLUTE_THRESHOLD_W: Final = 20.0
+# PV voltage: ~100-400 V, so a smaller relative step and a volt-sized absolute one.
+SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE: Final = 0.05
+SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE: Final = 1.0
 SMOOTHING_HEARTBEAT: Final = 600.0
 # PV power median sensor: median over this many seconds, same publish rules.
 MEDIAN_WINDOW: Final = 600.0  # also used for the 10 min maximum
+# Daily energy sensors: integrated from every sample, written on a change of
+# >= ENERGY_STEP_KWH or after SMOOTHING_HEARTBEAT; a gap longer than
+# ENERGY_MAX_GAP_INTERVALS fast intervals adds no energy.
+ENERGY_STEP_KWH: Final = 0.05
+ENERGY_MAX_GAP_INTERVALS: Final = 3
 
 # Read-only sensors that only repeat a control entity (switch/select/number) are
 # not created while that control exists (see sensor._duplicates_control).

@@ -53,6 +53,19 @@ def inverter_losses(status: GeneralStatus, mode: str | None, grid_power: int | N
     return round(pv + battery + grid - status.ac_output_active_power, 1)
 
 
+def net_generation(status: GeneralStatus, grid_power: int | None, self_consumption: float) -> float | None:
+    """What the system gave beyond the grid (W): load + battery charge - discharge - grid import - unseen own consumption.
+
+    Equals the PV power minus all inverter losses, so a battery that charges or
+    empties does not count. < 0 = the system consumed (night, losses). Grid
+    export, if any, counts as 0 import.
+    """
+    if grid_power is None:
+        return None
+    battery = status.battery_voltage * (status.battery_charge_current - status.battery_discharge_current)
+    return round(status.ac_output_active_power + battery - max(0, grid_power) - self_consumption, 1)
+
+
 def pv_power_calculated(
     status: GeneralStatus, mode: str | None, grid_power: int | None, self_consumption: float
 ) -> float | None:

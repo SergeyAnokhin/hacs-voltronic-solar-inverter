@@ -37,11 +37,15 @@ from .const import (
     ATTR_UPDATE_GROUP,
     CONTROL_DUPLICATE_KEYS,
     DISABLED_KEYS,
+    ENERGY_MAX_GAP_INTERVALS,
+    ENERGY_STEP_KWH,
     HIDDEN_KEYS,
     MEDIAN_WINDOW,
+    SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE,
     SMOOTHING_ABSOLUTE_THRESHOLD_W,
     SMOOTHING_HEARTBEAT,
     SMOOTHING_RELATIVE_THRESHOLD,
+    SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE,
     SMOOTHING_WINDOW,
     UPDATE_GROUP_SLOW,
 )
@@ -53,9 +57,9 @@ from .coordinator import (
     VoltronicRuntimeData,
 )
 from .entity import VoltronicEntity, is_supported, remove_entities
-from .power_balance import inverter_losses, pv_power_calculated, self_consumption_key
+from .power_balance import inverter_losses, net_generation, pv_power_calculated, self_consumption_key
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
-from .smoothing import DailyMax, SmoothedValue
+from .smoothing import DailyEnergy, DailyMax, SmoothedValue
 from .protocol.parsers import (
     BATTERY_TYPES,
     CHARGE_STAGES,
@@ -79,7 +83,8 @@ class VoltronicFastSensorDescription(SensorEntityDescription):
     precision: int | None = None  # decimals of the state itself (rounded before it is recorded)
     smoothing_window: float = SMOOTHING_WINDOW  # smoothed sensors only
     smoothing_statistic: str = "mean"  # "mean", "median" or "max"
-    smoothing_daily: bool = False  # statistic over the current local day instead of a window
+    smoothing_relative_threshold: float = SMOOTHING_RELATIVE_THRESHOLD
+    smoothing_absolute_threshold: float = SMOOTHING_ABSOLUTE_THRESHOLD_W
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -227,7 +232,10 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         value_fn=lambda d: d.status.heatsink_temperature,
     ),
     VoltronicFastSensorDescription(**_current("pv_input_current", lambda d: d.status.pv_input_current)),
-    VoltronicFastSensorDescription(**_voltage("pv_input_voltage", lambda d: d.status.pv_input_voltage)),
+    VoltronicFastSensorDescription(
+        # Every sample; exclude it from the recorder if the interval is short
+        **_voltage("pv_input_voltage_raw", lambda d: d.status.pv_input_voltage)
+    ),
     VoltronicFastSensorDescription(
         # Every sample; exclude it from the recorder if the interval is short
         **_power("pv_power_raw", lambda d: d.status.pv_charging_power)
@@ -540,13 +548,20 @@ EXTRA_SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
 SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(**_power("pv_power", lambda d: d.status.pv_charging_power)),
     VoltronicFastSensorDescription(
+        **_voltage(
+            "pv_input_voltage",
+            lambda d: d.status.pv_input_voltage,
+            smoothing_relative_threshold=SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE,
+            smoothing_absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE,
+        )
+    ),
+    VoltronicFastSensorDescription(
         **_power("grid_power", lambda d: d.grid_power, requires="grid_power")
     ),
     VoltronicFastSensorDescription(
         **_power("ac_output_active_power", lambda d: d.status.ac_output_active_power)
     ),
-    # Median / maximum of the last 10 minutes and the median of today (from local midnight):
-    # how the PV power has really been running lately.
+    # Median / maximum of the last 10 minutes: how the PV power has really been running lately.
     VoltronicFastSensorDescription(
         **_power(
             "pv_power_median_10min",
@@ -561,15 +576,6 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
             lambda d: d.status.pv_charging_power,
             smoothing_window=MEDIAN_WINDOW,
             smoothing_statistic="max",
-        )
-    ),
-    VoltronicFastSensorDescription(
-        **_power(
-            "pv_power_median_today",
-            lambda d: d.status.pv_charging_power,
-            smoothing_window=float("inf"),
-            smoothing_statistic="median",
-            smoothing_daily=True,
         )
     ),
 )
@@ -612,6 +618,55 @@ DAILY_MAX_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     ),
 )
 ATTR_MAX_TIME = "max_time"
+
+
+@dataclass(frozen=True, kw_only=True)
+class VoltronicEnergySensorDescription(VoltronicFastSensorDescription):
+    """Energy since local midnight, integrated from the power (W) of power_fn."""
+
+    power_fn: Callable[[FastData, Mapping[str, float]], float | None]
+
+
+def _grid_import(d: FastData) -> float | None:
+    """Grid power drawn (W); export, if any, counts as 0."""
+    return None if d.grid_power is None else max(0.0, float(d.grid_power))
+
+
+def _energy(
+    key: str, power_fn, state_class=SensorStateClass.TOTAL_INCREASING, **kwargs
+) -> VoltronicEnergySensorDescription:
+    return VoltronicEnergySensorDescription(
+        key=key,
+        translation_key=key,
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=state_class,
+        suggested_display_precision=2,
+        value_fn=lambda d: None,  # unused: VoltronicDailyEnergySensor samples power_fn
+        power_fn=power_fn,
+        **kwargs,
+    )
+
+
+# Signed ones can go negative: a total with last_reset (local midnight), not total_increasing.
+DAILY_ENERGY_SENSORS: tuple[VoltronicEnergySensorDescription, ...] = (
+    _energy("load_daily_energy", lambda d, _: d.status.ac_output_active_power),
+    _energy("grid_daily_energy", lambda d, _: _grid_import(d), requires="grid_power"),
+    # + = charged, - = discharged (whole-ampere currents: rough)
+    _energy(
+        "battery_daily_energy",
+        lambda d, _: d.status.battery_power,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    _energy(
+        "balance_daily_energy",
+        lambda d, own: net_generation(
+            d.status, d.grid_power, own[self_consumption_key(d.status, d.mode)]
+        ),
+        requires="grid_power",
+        state_class=SensorStateClass.TOTAL,
+    ),
+)
 
 IDENTITY_SENSORS: tuple[VoltronicIdentitySensorDescription, ...] = (
     VoltronicIdentitySensorDescription(
@@ -705,6 +760,11 @@ async def async_setup_entry(
     ]
     entities += [VoltronicBalanceSensor(data.fast, d) for d in BALANCE_SENSORS]
     entities += [VoltronicDailyMaxSensor(data.fast, d) for d in DAILY_MAX_SENSORS]
+    entities += [
+        VoltronicDailyEnergySensor(data.fast, d)
+        for d in DAILY_ENERGY_SENSORS
+        if is_supported(d, identity)
+    ]
     entities += [VoltronicSlowSensor(data.slow, d) for d in slow_descriptions]
     entities += [
         VoltronicIdentitySensor(data.slow, d)
@@ -739,19 +799,17 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
         self._smoother = SmoothedValue(
             window=description.smoothing_window,
             statistic=description.smoothing_statistic,
-            relative_threshold=SMOOTHING_RELATIVE_THRESHOLD,
-            absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_W,
+            relative_threshold=description.smoothing_relative_threshold,
+            absolute_threshold=description.smoothing_absolute_threshold,
             heartbeat=SMOOTHING_HEARTBEAT,
+            precision=description.precision or 0,
         )
         if coordinator.data is not None:
-            self._smoother.add(time.monotonic(), self._sample(), self._day())
+            self._smoother.add(time.monotonic(), self._sample())
         self._written_available = coordinator.last_update_success  # state written on add
 
     def _sample(self) -> StateType:
         return self.entity_description.value_fn(self.coordinator.data)
-
-    def _day(self):
-        return dt_util.now().date() if self.entity_description.smoothing_daily else None
 
     @property
     def native_value(self) -> StateType:
@@ -761,7 +819,7 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         changed = False
         if self.coordinator.last_update_success:
-            changed = self._smoother.add(time.monotonic(), self._sample(), self._day())
+            changed = self._smoother.add(time.monotonic(), self._sample())
         if changed or self.available != self._written_available:
             self._written_available = self.available
             self.async_write_ha_state()
@@ -826,6 +884,72 @@ class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         at = self._max.at
         return {ATTR_MAX_TIME: at.isoformat()} if at is not None else None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        changed = False
+        if self.coordinator.last_update_success:
+            changed = self._add_sample()
+        if changed or self.available != self._written_available:
+            self._written_available = self.available
+            self.async_write_ha_state()
+
+
+class VoltronicDailyEnergySensor(VoltronicEntity, RestoreEntity, SensorEntity):
+    """Energy since local midnight, integrated in the integration from every sample.
+
+    Integrating the raw samples keeps the result exact; only the writes are
+    thinned out (smoothing.DailyEnergy). Restored after a restart on the same day.
+    """
+
+    entity_description: VoltronicEnergySensorDescription
+
+    def __init__(
+        self, coordinator: VoltronicFastCoordinator, description: VoltronicEnergySensorDescription
+    ) -> None:
+        super().__init__(coordinator, description)
+        interval = coordinator.update_interval.total_seconds() if coordinator.update_interval else 0
+        self._energy = DailyEnergy(
+            max_gap=ENERGY_MAX_GAP_INTERVALS * interval,
+            step=ENERGY_STEP_KWH,
+            heartbeat=SMOOTHING_HEARTBEAT,
+        )
+        self._written_available = coordinator.last_update_success
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        today = dt_util.now().date()
+        if (
+            last is not None
+            and last.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+            and dt_util.as_local(last.last_updated).date() == today
+        ):
+            try:
+                self._energy.restore(today, float(last.state))
+            except ValueError:
+                pass
+        if self.coordinator.data is not None:
+            self._add_sample()
+
+    def _add_sample(self) -> bool:
+        return self._energy.add(
+            dt_util.now().date(),
+            time.monotonic(),
+            self.entity_description.power_fn(
+                self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption
+            ),
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        return self._energy.value
+
+    @property
+    def last_reset(self) -> datetime | None:
+        if self.state_class != SensorStateClass.TOTAL or self._energy.day is None:
+            return None
+        return dt_util.start_of_local_day(self._energy.day)
 
     @callback
     def _handle_coordinator_update(self) -> None:

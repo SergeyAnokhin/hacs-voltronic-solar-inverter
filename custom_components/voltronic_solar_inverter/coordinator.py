@@ -119,6 +119,10 @@ class _VoltronicCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 "kept" if self.failures <= MAX_MISSED_UPDATES else "unavailable",
                 err,
             )
+            if self.failures == MAX_MISSED_UPDATES + 1:
+                # HA notifies listeners only when last_update_success flips, which
+                # happened on the first failure: tell entities the grace is over.
+                self.async_update_listeners()
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="update_failed",
