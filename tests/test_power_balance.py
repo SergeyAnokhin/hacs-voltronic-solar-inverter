@@ -31,7 +31,7 @@ def test_losses_at_night_battery_mode():
 
 def test_losses_unknown_in_line_mode_without_grid_power():
     assert balance.inverter_losses(AC_CHARGING, "line", None) is None
-    assert balance.pv_power_calculated(AC_CHARGING, "line", None, 50) is None
+    assert balance.pv_power_calculated(AC_CHARGING, "line", None) is None
 
 
 def test_losses_with_grid_power():
@@ -40,13 +40,23 @@ def test_losses_with_grid_power():
     assert balance.inverter_losses(s, "line", 400) == expected
 
 
-def test_pv_power_calculated():
-    # Battery delivers 376.5 W, load 317 W: with 59.5 W own use there is no PV.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, 59.5) == 0
-    # With 100 W own use, 40.5 W must come from somewhere else (PV).
-    assert balance.pv_power_calculated(LOAD, "battery", 0, 100) == 40.5
+def test_pv_power_calculated_from_inverter_currents():
+    # 317 W load + 50 W + 3.5 % losses - 376.5 W from the battery: ~0 at night.
+    assert balance.pv_power_calculated(LOAD, "battery", 0) == 1.6
+    # Line mode, battery charging 2 A: load + 28 W + 1 % + charge - grid.
+    s = AC_CHARGING
+    charge = s.battery_voltage * s.battery_charge_current
+    expected = round(s.ac_output_active_power * 1.01 + 28 + charge - 400, 1)
+    assert balance.pv_power_calculated(s, "line", 400) == max(0.0, expected)
+
+
+def test_pv_power_calculated_from_external_battery():
+    # BMS says only 300 W leave the battery: ~78 W must come from PV.
+    assert balance.pv_power_calculated(LOAD, "battery", 0, -300) == 78.1
+    # Charging 200 W while feeding the load: PV covers both plus losses.
+    assert balance.pv_power_calculated(LOAD, "battery", 0, 200) == 578.1
     # Never negative.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, 0) == 0
+    assert balance.pv_power_calculated(LOAD, "battery", 0, -1000) == 0
 
 
 def test_self_consumption_key():

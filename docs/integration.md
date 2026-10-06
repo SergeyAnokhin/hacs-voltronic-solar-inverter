@@ -42,7 +42,7 @@ Only answering commands are polled (see "No reply" in [inverter-protocol.md](inv
 | File | Role |
 |---|---|
 | [`__init__.py`](../custom_components/voltronic_solar_inverter/__init__.py) | Setup/unload; picks platforms; removes control entities from the registry when controls are off |
-| [`config_flow.py`](../custom_components/voltronic_solar_inverter/config_flow.py) | User step (host, port, both intervals; probes `QPI`/`QMN`/`QID`, unique id = serial). Options flow (`OptionsFlowWithReload`): the two intervals |
+| [`config_flow.py`](../custom_components/voltronic_solar_inverter/config_flow.py) | User step (host, port, both intervals; probes `QPI`/`QMN`/`QID`, unique id = serial). Options flow (`OptionsFlowWithReload`): the two intervals and the optional external battery power sensor (`battery_power_sensor`, entity selector, sensor with device class power) |
 | [`coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py) | `FastData`, `SlowData`, `VoltronicRuntimeData` (incl. the `self_consumption` settings), the two coordinators |
 | [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py) | Power balance (no HA imports): inverter losses, calculated PV power, which self-consumption setting applies, measured defaults |
 | [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | `VoltronicEntity` (unique id `<serial>_<key>`, device info); `VoltronicControlEntity.async_send()` = the single write path |
@@ -55,21 +55,21 @@ Only answering commands are polled (see "No reply" in [inverter-protocol.md](inv
 
 ## Entities
 
-Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter_vmii_4000_grid_voltage`. "Diag" = entity category diagnostic; "off" = disabled by default.
+Per-sensor meaning and formulas of the derived values: [sensors.md](sensors.md). Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter_vmii_4000_grid_voltage`. "Diag" = entity category diagnostic; "off" = disabled by default.
 
 | Group | Entities | Source |
 |---|---|---|
 | Live sensors (fast) | grid voltage/frequency, AC output voltage/frequency, apparent power (VA), active power (W), load %, battery voltage, charge current, discharge current, battery power (signed, derived V × (I<sub>chg</sub> − I<sub>dis</sub>)), heat-sink temperature, PV current, PV voltage raw (every sample), PV voltage (smoothed, 5 % / 1 V publish thresholds), PV power raw (every sample), PV power (smoothed, see below), PV power median / max (10 min), PV power median / max today, mode (enum incl. `charging` = `QMOD` C, output off; an unknown letter gives state *unknown* and one log warning, the other fast entities stay available); active power also as `_raw`/smoothed pair | `QPIGS` 0–6, 8, 9, 11–13, 15, 19; `QMOD` |
 | Live sensors, off | bus voltage (diag), SCC battery voltage (diag), battery level estimate (voltage-based %, **not SOC**) | `QPIGS` 7, 14, 10 |
 | Grid power (fast, H) | signed W as `grid_power_raw` + smoothed `grid_power`; positive = import (verified in mode L on 2026-10-05); reads ~16 W + ~2 % low against an external meter | `HGRID[6]` |
-| Power balance (fast) | *Inverter losses* (PV `QPIGS[19]` + battery V × (I<sub>dis</sub> − I<sub>chg</sub>) + grid − load) and *PV power calculated* (load + self-consumption − battery − grid, ≥ 0); both the 10 min mean with the smoothed publish rules. Unknown in mode L without `HGRID`; grid counts as 0 in other modes without it. See [Power balance](#power-balance-and-self-consumption) | `QPIGS`, `QMOD`, `HGRID[6]`, self-consumption numbers |
+| Power balance (fast) | *Inverter losses* (PV `QPIGS[19]` + battery V × (I<sub>dis</sub> − I<sub>chg</sub>) + grid − load) and *PV power calculated* (load + loss model + battery power − grid, ≥ 0; battery power from the optional external sensor, else the inverter's currents); both the 10 min mean with the smoothed publish rules. Unknown in mode L without `HGRID`; grid counts as 0 in other modes without it. See [Power balance](#power-balance-and-self-consumption) | `QPIGS`, `QMOD`, `HGRID[6]`, optional external battery sensor |
 | Daily energy (fast) | *Load daily energy* (`load_daily_energy`, AC output power), *Grid daily energy* (`grid_daily_energy`, grid import = max(0, `HGRID[6]`)), *Battery daily energy* (`battery_daily_energy`, battery power V × (I<sub>chg</sub> − I<sub>dis</sub>), + = charged), *Balance daily energy* (`balance_daily_energy`, [`power_balance.net_generation`](../custom_components/voltronic_solar_inverter/power_balance.py): load + battery − grid import − self-consumption of the current mode = PV minus all losses). kWh, 2 decimals; battery and balance may be negative: `state_class` `total` + `last_reset` = local midnight, the other two `total_increasing`; grid and balance only with `HGRID`. See [Daily energy](#daily-energy) | `QPIGS` 5, 8, 9, 15; `HGRID[6]`, self-consumption numbers |
 | PV energy (slow, H) | today, this month, this year, total (kWh, `total_increasing`; the inverter's own counters, match the vendor app) | `HGEN` 2–5 |
 | Schedules (slow, H) | AC output on / off time (P48/P49, verified), AC charger start / stop time (P46/P47, verified), shown as `HH:00` | `HEEP2[12]`, `HEEP2[11]` |
 | Clock (diag, slow, H) | inverter clock (timestamp, inverter local time interpreted in HA's time zone), clock offset (min, inverter − HA; ~ −10 on the test unit) | `HGEN` 0–1 |
 | Temperatures (slow, H) | inverter, transformer, PV temperature; diag: fan 1 / fan 2 speed %. Boost temperature = the heat-sink sensor | `HTEMP` 0, 2, 3, 5, 6 |
 | Other settings (diag, slow) | solar supply priority P43 (battery first / load first, verified), battery low-alarm voltage P24, charge stage (`Q1[17]`: idle/bulk verified, absorb/float generic), equalization voltage / time / timeout / interval + binary enabled / active; off: second-output cut-off voltage, recover voltage, recover delay, BMS shutdown SOC (P38), BMS back-to-battery SOC (P40), grid-tie current (P56), firmware date | `HEEP1`, `HEEP2`, `Q1`, `QBEQI`, `HIMSG1` |
-| Settings / ratings (diag, slow) | rated output V/Hz/VA/W, battery rating V, float voltage, battery type, AC input range (enums carry a `code` attribute). **Not created while a control entity shows the same value** (`CONTROL_DUPLICATE_KEYS` in `const.py`, rule in `sensor._duplicates_control`): output/charger/solar-supply priority, max (utility) charging current, back-to-utility / back-to-battery / cut-off / bulk voltage (only when battery rating = 24 V, i.e. the numbers exist). Stale registry entries are removed at setup (`entity.remove_entities`); off: grid rating V/A, rated output current, machine type, topology, output mode | `QPIRI` |
+| Settings / ratings (diag, slow) | rated output V/Hz/VA/W, battery rating V, float voltage, battery type, AC input range (enums carry a `code` attribute). **Not created while a control entity shows the same value** (`CONTROL_DUPLICATE_KEYS` in `const.py`, rule in `sensor._duplicates_control`): output/charger/solar-supply priority, max (utility) charging current, back-to-utility / back-to-battery / cut-off / bulk voltage (only when battery rating = 24 V, i.e. the numbers exist). Stale registry entries are removed at setup (`entity.remove_entities`; dropped sensors such as `pv_power_median_today` are listed in `REMOVED_KEYS` in `const.py` and removed the same way); off: grid rating V/A, rated output current, machine type, topology, output mode | `QPIRI` |
 | Identity (diag) | serial number, firmware version; off: SCC firmware, protocol | `QID`, `QVFW`, `QVFW2`, `QPI` |
 | Binary (fast) | AC output (`QMOD` ∈ L/B; unknown when the `QMOD` letter is not in `DEVICE_MODES`), load on (b4), charging (b2), solar charging (b1), grid charging (b0); off: charging to float (status2 b10) | `QMOD`, `QPIGS` 16/20 |
 | Binary (slow) | SBU priority (`QPIRI[16]` = 1), fault (any fault bit or `QMOD` = F; attribute `faults`), warning (any warning bit; attribute `warnings`; a0 ignored) | `QPIRI`, `QPIWS`, `QMOD` |
@@ -88,7 +88,7 @@ Entity ids are `<domain>.<device name>_<translated name>`, e.g. `sensor.inverter
 | Number: max utility charging current | `MUCHGC<nnn>` | values from `QMUCHGCR` (2, 10…60 A) | unverified |
 | Numbers: back to utility / back to battery / cut-off / bulk voltage | `PBCV` / `PBDV` / `PSDV` / `PCVV` `<nn.n>` | 22.0–25.5 step 0.5 / 24.0–29.0 step 0.5 / 20.0–26.0 step 0.1 / 24.0–30.0 step 0.1 | created only if battery rating = 24 V; ranges from the Vevor manual; unverified (`PBCV`/`PBDV` ACKed on the sibling; `PSDV` NAKed there, `PCVV` "not supported" there) |
 
-**HA-only numbers (config, never sent to the inverter):** *Self-consumption (battery mode / line mode / output off)*, 0–500 W, restored after a restart (`RestoreNumber`), read by *PV power calculated*. Defaults 0 / 16 / 13 W (owner's measurement, see below).
+**HA-only numbers (config, never sent to the inverter):** *Self-consumption (battery mode / line mode / output off)*, 0–500 W, restored after a restart (`RestoreNumber`), read by the daily energy balance (not by *PV power calculated* since 0.4.7). Defaults 0 / 16 / 13 W (owner's measurement, see below).
 
 Codes not confirmed by the owner (output priority 0 "solar first (SUB)", 2 "utility first"; charger priority 0 "solar first", 1 "solar and utility") are rejected by the builders and not offered in the selects. To publish one after the owner confirms it, add the code to `OUTPUT_SOURCE_PRIORITIES_VERIFIED` / `CHARGER_SOURCE_PRIORITIES_VERIFIED` in [`parsers.py`](../custom_components/voltronic_solar_inverter/protocol/parsers.py) and add the `select` state string.
 
@@ -128,9 +128,26 @@ The self-consumption numbers hold the part of the inverter's own consumption tha
 | Output off (S), grid present | 13 W | `HGRID` 0 W | 13 W |
 | Line mode (L), output on, charger flagged on with 0 A | 40–45 W | `HGRID` ~25 W | 16 W |
 | Line mode, 1.3 kW load | ~1350 W input | `HGRID` ~1308 W, load ~1280 W | (16 W + ~2 %) |
-| Battery mode (B), ~220 W load | not measured yet | battery 13.6 A × V ≈ 313 W (BMS: 11.7 A ≈ 283 W) | 0 W, to be measured |
+| Battery mode (B), night | 50 W + 3.5 % of the load from the battery (BMS) | battery current × V ≈ 1.03 × BMS | 0 W (see below) |
 
 Single samples are noisy (battery currents are whole amperes, ~25 W on 24 V), hence the 10 min mean.
+
+**History check (2026-10-06, ~4 days of the owner's recorder database, 10 min bins, BMS = battery meter, meter = AC input meter; see [local-data.md](local-data.md)):**
+
+| Finding | Value |
+|---|---|
+| Line mode, battery idle | meter = 16.9 W + 1.029 × `HGRID` (sd 4 W); `HGRID` = load + 28 W + 1 % (sd 5 W); total own draw = 46.6 W + 1.3 % of load. Confirms the night test |
+| Output off (S) | meter median 12.5 W, `HGRID` 0 |
+| Modes B and C | meter ~3 W: the inverter still draws ~3 W from the grid while running from battery / PV |
+| Battery mode, night | true losses (BMS out − load) = 50.2 W + 3.45 % of load (sd 5 W, load 136–1145 W); inverter's battery power = 1.03 × BMS |
+| Battery mode, daylight, `QPIGS[19]` low | the inverter's discharge current stays at its own DC draw (load + losses) while the BMS shows less: PV ≈ load + losses + BMS power is **~85–95 W above `QPIGS[19]`** for reported 0–200 W, ~45–60 W above at 600–870 W; reported 0 W with ~30–90 W real is common in the morning and afternoon. Daily PV energy in these bins: reported 1.2–1.5 kWh vs ~1.7–2.1 kWh |
+| Mode C (output off, PV charging) | BMS charge ≈ `QPIGS[19]` + 30–40 W |
+| Line mode, AC charger | outside the P46/P47 window the charger is flagged on with 0 A (not a BMS block); inside (01–02) it charges 2.0 A by the inverter, 1.8 A by the BMS |
+| `QPIGS[12]` × `[13]` | = `QPIGS[19]` within 1 % (no extra information; the integration rounds the PV current to whole amperes) |
+
+Consequence (implemented in 0.4.7): *PV power calculated* = load + `LOSS_MODEL` (50 W + 3.5 % of load in mode B, 28 W + 1 % in mode L, 0 output off; [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py)) + battery power (+ = charging) − grid. With the inverter's currents it stays near the reported PV, because in daylight the inverter's discharge current already contains the PV shortfall. With the options' external battery sensor (e.g. the BMS) it shows the hidden PV. The sensor state is read on every fast poll (W or kW); an unusable state skips the sample (no fallback to the inverter's currents, which would make the mean jump). A BMS that freezes (as on 2026-10-06 11:00–16:30, constant 97 W) is not detected.
+
+`HGRID` answers have no CRC: since 0.4.7 [`parse_hgrid_power`](../custom_components/voltronic_solar_inverter/protocol/h_parsers.py) rejects an answer whose first field is not a voltage (0–300 V), whose power has no sign, or whose power exceeds ±20 kW (`MAX_GRID_POWER_W`); the coordinator then keeps the last value (optional-field grace). This blocks foreign answers like the 710 000 W sample of 2026-10-05.
 
 ### Daily energy
 

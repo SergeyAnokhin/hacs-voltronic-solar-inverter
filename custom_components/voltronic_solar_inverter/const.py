@@ -14,6 +14,8 @@ DEFAULT_PORT: Final = 8899
 
 CONF_FAST_INTERVAL: Final = "fast_scan_interval"
 CONF_SLOW_INTERVAL: Final = "slow_scan_interval"
+# Optional external battery power sensor (W or kW, + = charging), e.g. a BMS
+CONF_BATTERY_POWER_SENSOR: Final = "battery_power_sensor"
 
 # Attribute on every entity polled by the slow coordinator (settings, ratings, flags, warnings).
 ATTR_UPDATE_GROUP: Final = "update_group"
@@ -65,6 +67,8 @@ DISABLED_KEYS: Final = frozenset(
 # Entity keys renamed in config entry minor version 2 (old -> new); history is kept.
 # The old PV power sensor becomes the smoothed, recorded one.
 RENAMED_KEYS: Final = {"pv_charging_power": "pv_power"}
+# Sensor keys no longer created; their registry entries are deleted at setup.
+REMOVED_KEYS: Final = frozenset({"pv_power_median_today"})  # removed in 0.4.6
 
 # Smoothed sensors: mean over SMOOTHING_WINDOW s, published on a change of
 # >= 10 % (and >= the absolute threshold), on a drop to 0, or after the heartbeat.

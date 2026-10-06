@@ -220,3 +220,5 @@ __marimo__/
 # ESPHome
 esphome/secrets.yaml
 esphome/.esphome/
+
+/local_data/*

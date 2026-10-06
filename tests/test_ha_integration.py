@@ -663,17 +663,37 @@ async def test_self_consumption_and_balance_sensors(hass: HomeAssistant, inverte
     assert hass.states.get(f"number.{PREFIX}_self_consumption_line_mode").state == "16.0"
     assert hass.states.get(f"number.{PREFIX}_self_consumption_output_off").state == "13.0"
     assert hass.states.get(f"sensor.{PREFIX}_inverter_losses").state == "60"  # 59.5 W, whole watts
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "0"
+    # 317 W load + 50 W + 3.5 % losses - 376.5 W from the battery
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "2"
 
     await hass.services.async_call(
         "number", "set_value", {"entity_id": battery_id, "value": 100}, blocking=True
     )
     assert entry.runtime_data.self_consumption["battery"] == 100
+    assert inverter.writes == []  # HA-only setting, nothing sent
+
+
+async def test_pv_power_calculated_with_external_battery_sensor(
+    hass: HomeAssistant, inverter: Inverter
+) -> None:
+    inverter.table["QPIGS"] = answered("snapshot_B_night_load_300w.json")["QPIGS"]  # 317 W load
+    hass.states.async_set("sensor.bms_power", "-0.3", {"unit_of_measurement": "kW"})
+    entry = await setup(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_FAST_INTERVAL: 10, CONF_SLOW_INTERVAL: 60, "battery_power_sensor": "sensor.bms_power"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["battery_power_sensor"] == "sensor.bms_power"
+    # 317 + 50 + 3.5 % - 300 W from the BMS = 78 W of PV the inverter does not show.
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "78"
+    # An unusable BMS state skips the sample instead of falling back to the inverter.
+    hass.states.async_set("sensor.bms_power", "unavailable")
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
-    # Mean of 0 and 40.5 W -> 20 W: published (drop from 0 is >= 20 W).
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "20"
-    assert inverter.writes == []  # HA-only setting, nothing sent
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "78"
 
 
 async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
@@ -708,3 +728,15 @@ async def test_daily_energy_needs_grid_power(hass: HomeAssistant, inverter: Inve
     assert hass.states.get(f"sensor.{PREFIX}_battery_daily_energy") is not None
     assert hass.states.get(f"sensor.{PREFIX}_grid_daily_energy") is None
     assert hass.states.get(f"sensor.{PREFIX}_balance_daily_energy") is None
+
+
+async def test_removed_sensor_is_deleted_from_registry(hass: HomeAssistant, inverter: Inverter) -> None:
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    old = registry.async_get_or_create(
+        "sensor", DOMAIN, f"{SERIAL}_pv_power_median_today", config_entry=entry
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(old.entity_id) is None

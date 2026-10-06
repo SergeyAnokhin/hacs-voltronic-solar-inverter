@@ -103,6 +103,20 @@ def test_hgrid_power_signed():
     assert parse_hgrid_power("239.0 50.0 280 090 70 40 -00100 2 04500 11+00000") == -100
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # a QPIGS answer read as HGRID (no sign in field 6)
+        "238.7 50.0 230.1 50.0 0391 0240 009 375 25.30 000 087 0038 00.0 000.0 00.00 00011 00010000 00 00 00000 010",
+        "239.0 50.0 280 090 70 40 +710000 0 04500 11+00000",  # out of range
+        "PI30 50.0 280 090 70 40 +00412 1 04500",  # first field not a voltage
+    ],
+)
+def test_hgrid_power_rejects_foreign_answers(payload):
+    with pytest.raises(InverterProtocolError):
+        parse_hgrid_power(payload)
+
+
 def test_himsg1_firmware_date():
     assert parse_himsg1_firmware_date(H_S["HIMSG1"]) == "2026-01-19"
     with pytest.raises(InverterProtocolError):

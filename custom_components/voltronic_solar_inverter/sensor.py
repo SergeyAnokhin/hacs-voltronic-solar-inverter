@@ -34,6 +34,7 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_BATTERY_POWER_SENSOR,
     ATTR_UPDATE_GROUP,
     CONTROL_DUPLICATE_KEYS,
     DISABLED_KEYS,
@@ -41,6 +42,7 @@ from .const import (
     ENERGY_STEP_KWH,
     HIDDEN_KEYS,
     MEDIAN_WINDOW,
+    REMOVED_KEYS,
     SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE,
     SMOOTHING_ABSOLUTE_THRESHOLD_W,
     SMOOTHING_HEARTBEAT,
@@ -91,7 +93,8 @@ class VoltronicFastSensorDescription(SensorEntityDescription):
 class VoltronicBalanceSensorDescription(VoltronicFastSensorDescription):
     """Smoothed value computed from the power balance and the self-consumption settings."""
 
-    balance_fn: Callable[[FastData, Mapping[str, float]], float | None]
+    # (data, self-consumption settings, external battery power in W or None)
+    balance_fn: Callable[[FastData, Mapping[str, float], float | None], float | None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -591,12 +594,10 @@ def _balance(key: str, balance_fn) -> VoltronicBalanceSensorDescription:
 
 
 BALANCE_SENSORS: tuple[VoltronicBalanceSensorDescription, ...] = (
-    _balance("inverter_losses", lambda d, _: inverter_losses(d.status, d.mode, d.grid_power)),
+    _balance("inverter_losses", lambda d, _, __: inverter_losses(d.status, d.mode, d.grid_power)),
     _balance(
         "pv_power_calculated",
-        lambda d, own: pv_power_calculated(
-            d.status, d.mode, d.grid_power, own[self_consumption_key(d.status, d.mode)]
-        ),
+        lambda d, _, battery: pv_power_calculated(d.status, d.mode, d.grid_power, battery),
     ),
 )
 
@@ -752,6 +753,8 @@ async def async_setup_entry(
     slow_descriptions = [d for d in all_slow if d.key not in duplicates and is_supported(d, identity)]
     # Sensors dropped in 0.4.0 (they repeat a control entity): clean up the old registry entries.
     remove_entities(hass, identity, "sensor", duplicates)
+    # Sensors dropped later: delete their orphaned registry entries too.
+    remove_entities(hass, identity, "sensor", REMOVED_KEYS)
     entities: list[SensorEntity] = [
         VoltronicFastSensor(data.fast, d) for d in FAST_SENSORS if is_supported(d, identity)
     ]
@@ -826,13 +829,43 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
 
 
 class VoltronicBalanceSensor(VoltronicSmoothedSensor):
-    """Smoothed power-balance value; reads the self-consumption numbers from runtime data."""
+    """Smoothed power-balance value; reads the self-consumption numbers from runtime
+    data and, if configured, the external battery power sensor."""
 
     entity_description: VoltronicBalanceSensorDescription
 
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self._smoother.value is None and self.coordinator.data is not None:
+            self._smoother.add(time.monotonic(), self._sample())
+
     def _sample(self) -> StateType:
-        own = self.coordinator.config_entry.runtime_data.self_consumption
-        return self.entity_description.balance_fn(self.coordinator.data, own)
+        entry = self.coordinator.config_entry
+        battery = None
+        if entity_id := entry.options.get(CONF_BATTERY_POWER_SENSOR):
+            if self.hass is None:
+                return None  # not added yet; async_added_to_hass takes the first sample
+            battery = _power_state(self.hass, entity_id)
+            if battery is None:
+                return None  # skip the sample rather than mix in the inverter's currents
+        return self.entity_description.balance_fn(
+            self.coordinator.data, entry.runtime_data.self_consumption, battery
+        )
+
+
+def _power_state(hass: HomeAssistant, entity_id: str) -> float | None:
+    """Numeric state of a power sensor in W (accepts W and kW); None if unusable."""
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    try:
+        value = float(state.state)
+    except ValueError:
+        return None
+    unit = state.attributes.get("unit_of_measurement")
+    if unit == UnitOfPower.KILO_WATT:
+        return value * 1000
+    return value if unit in (UnitOfPower.WATT, None) else None
 
 
 class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):

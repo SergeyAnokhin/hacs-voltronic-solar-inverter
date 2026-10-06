@@ -4,7 +4,7 @@
 
 The inverter reports battery currents in whole amperes (~25 W steps on 24 V),
 so single samples are noisy; the sensors built on this average over minutes.
-Grid power comes from HGRID (sign not verified yet: positive = import assumed).
+Grid power comes from HGRID (+ = import, verified in mode L).
 """
 
 from __future__ import annotations
@@ -24,12 +24,25 @@ def _grid(grid_power: int | None, mode: str | None) -> float | None:
     return None if mode in _GRID_MODES else 0.0
 
 
-# Keys of the self-consumption settings (number entities).
+# Keys of the self-consumption settings (number entities, used by the daily
+# energy balance) and of LOSS_MODEL.
 BATTERY, LINE, OUTPUT_OFF = "battery", "line", "output_off"
-# Measured on the owner's VMII-4000 with an external meter (2026-10-05): the
+# Measured on the owner's VMII-4000 with an external meter (2026-10-05/06): the
 # inverter's own sensors miss ~16 W in line mode (HGRID) and all 13 W with the
-# output off. Battery mode is not measured yet.
+# output off; in battery mode its battery current already contains its losses.
 DEFAULT_SELF_CONSUMPTION = {BATTERY: 0.0, LINE: 16.0, OUTPUT_OFF: 13.0}
+
+
+# Inverter losses already contained in the inputs the balance uses (battery power
+# in mode B, HGRID in mode L), as (constant W, fraction of the load). Fitted on
+# ~4 days of the owner's history (2026-10-06): BMS out - load = 50.2 W + 3.45 %
+# at night; HGRID - load = 28 W + 1 % with the battery idle. The part of the own
+# draw that comes unseen from the grid (16 W in L, 13 W output off) cancels out.
+LOSS_MODEL: dict[str, tuple[float, float]] = {
+    BATTERY: (50.0, 0.035),
+    LINE: (28.0, 0.01),
+    OUTPUT_OFF: (0.0, 0.0),
+}
 
 
 def self_consumption_key(status: GeneralStatus, mode: str | None) -> str:
@@ -67,14 +80,25 @@ def net_generation(status: GeneralStatus, grid_power: int | None, self_consumpti
 
 
 def pv_power_calculated(
-    status: GeneralStatus, mode: str | None, grid_power: int | None, self_consumption: float
+    status: GeneralStatus,
+    mode: str | None,
+    grid_power: int | None,
+    battery_power: float | None = None,
 ) -> float | None:
-    """PV power implied by the balance: load + charge + own consumption - discharge - grid (>= 0).
+    """PV power implied by the balance: load + losses + charge - discharge - grid (>= 0).
 
-    ``self_consumption`` is what the inverter's sensors do not show, not its total draw.
+    ``battery_power`` (W, + = charging) comes from an external battery meter (BMS);
+    without it the inverter's battery currents are used. In daylight those show
+    the inverter stage's own DC draw instead of the battery current, so weak PV
+    (up to ~90 W on the test unit) only becomes visible with an external meter.
     """
     grid = _grid(grid_power, mode)
     if grid is None:
         return None
-    battery = status.battery_voltage * (status.battery_discharge_current - status.battery_charge_current)
-    return round(max(0.0, status.ac_output_active_power + self_consumption - battery - grid), 1)
+    if battery_power is None:
+        battery_power = status.battery_voltage * (
+            status.battery_charge_current - status.battery_discharge_current
+        )
+    load = status.ac_output_active_power
+    constant, fraction = LOSS_MODEL[self_consumption_key(status, mode)]
+    return round(max(0.0, load + constant + fraction * load + battery_power - grid), 1)

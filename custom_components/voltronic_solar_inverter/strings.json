@@ -32,11 +32,13 @@
         "title": "Inverter options",
         "data": {
           "fast_scan_interval": "Live values interval",
-          "slow_scan_interval": "Settings and warnings interval"
+          "slow_scan_interval": "Settings and warnings interval",
+          "battery_power_sensor": "Battery power sensor (optional)"
         },
         "data_description": {
           "fast_scan_interval": "How often live values are read (QPIGS, QMOD).",
-          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS)."
+          "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS).",
+          "battery_power_sensor": "An external battery meter such as a BMS, in W or kW, positive while charging. When set, PV power calculated uses it instead of the inverter's battery currents, which cannot show weak PV power."
         }
       }
     }

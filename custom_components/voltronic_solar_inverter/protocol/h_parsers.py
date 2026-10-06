@@ -139,9 +139,23 @@ def parse_htemp(payload: str) -> Temperatures:
     )
 
 
+# H answers carry no CRC: an answer meant for another client on the same gateway
+# can arrive instead (seen 2026-10-05 as a 710 000 W grid power). Values outside
+# these limits are rejected as malformed.
+MAX_GRID_POWER_W: Final = 20000
+
+
 def parse_hgrid_power(payload: str) -> int:
-    """HGRID[6]: signed grid power in W (sign convention still to be verified)."""
-    return _int(_fields(payload, "HGRID", 7)[6], "HGRID")
+    """HGRID[6]: signed grid power in W, + = import (verified in mode L)."""
+    f = _fields(payload, "HGRID", 7)
+    voltage = _float(f[0], "HGRID")
+    power = f[6]
+    if not 0 <= voltage <= 300 or power[:1] not in ("+", "-"):
+        raise InverterProtocolError(f"HGRID: not a grid status answer: {payload!r}")
+    value = _int(power, "HGRID")
+    if abs(value) > MAX_GRID_POWER_W:
+        raise InverterProtocolError(f"HGRID: implausible grid power {value} W")
+    return value
 
 
 def parse_himsg1_firmware_date(payload: str) -> str:

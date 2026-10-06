@@ -12,6 +12,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BATTERY_POWER_SENSOR,
     CONF_FAST_INTERVAL,
     CONF_SLOW_INTERVAL,
     DEFAULT_FAST_INTERVAL,
@@ -112,16 +113,17 @@ class VoltronicConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class VoltronicOptionsFlow(OptionsFlowWithReload):
-    """Poll intervals."""
+    """Poll intervals and the optional external battery power sensor."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(
-                data={
-                    CONF_FAST_INTERVAL: int(user_input[CONF_FAST_INTERVAL]),
-                    CONF_SLOW_INTERVAL: int(user_input[CONF_SLOW_INTERVAL]),
-                }
-            )
+            data = {
+                CONF_FAST_INTERVAL: int(user_input[CONF_FAST_INTERVAL]),
+                CONF_SLOW_INTERVAL: int(user_input[CONF_SLOW_INTERVAL]),
+            }
+            if battery := user_input.get(CONF_BATTERY_POWER_SENSOR):
+                data[CONF_BATTERY_POWER_SENSOR] = battery
+            return self.async_create_entry(data=data)
         options = self.config_entry.options
         schema = vol.Schema(
             {
@@ -129,6 +131,14 @@ class VoltronicOptionsFlow(OptionsFlowWithReload):
                     options.get(CONF_FAST_INTERVAL, DEFAULT_FAST_INTERVAL),
                     options.get(CONF_SLOW_INTERVAL, DEFAULT_SLOW_INTERVAL),
                 ),
+                vol.Optional(CONF_BATTERY_POWER_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor", device_class="power")
+                ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {CONF_BATTERY_POWER_SENSOR: options.get(CONF_BATTERY_POWER_SENSOR)}
+            ),
+        )

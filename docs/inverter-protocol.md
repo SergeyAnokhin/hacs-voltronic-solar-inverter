@@ -98,11 +98,11 @@ Sample (night, battery mode, grid present, 300 W load): `234.1 50.0 230.1 50.0 0
 | 11 | `heatsink_temp` | °C | 41 | Equals `Q1[9]` and `HTEMP[1]` (**boost** temperature) in every sample |
 | 12 / 13 | `pv_current` / `pv_voltage` | A / V | 0.0 / 0.0 | PV disconnected; re-check with PV |
 | 14 | `scc_voltage` | V | 0.00 | Battery voltage seen by the solar charger (0 when the SCC is idle) |
-| 15 | `battery_discharge_current` | A | 15 | Integer amps. 15 A × 25.1 V ≈ 376 W DC for 317 W AC (≈ 84 % efficiency). With output on and 0 W load it read 0 A, so the inverter's **own idle draw is not visible** at 1 A resolution. Against the battery's BMS (2026-10-05, ~240 W load): 12–14 A (mean 13.6) vs BMS 11.7 A, so not truncated, rather ~15 % high (one BMS sample); the inverter also reads the battery ~0.3 V lower than the BMS (cable drop) |
+| 15 | `battery_discharge_current` | A | 15 | Integer amps. 15 A × 25.1 V ≈ 376 W DC for 317 W AC (≈ 84 % efficiency). With output on and 0 W load it read 0 A, so the inverter's **own idle draw is not visible** at 1 A resolution. Against the battery's BMS over 4 days of history: at night 1.03 × the BMS; **in daylight with weak PV it reads the inverter stage's own DC draw, not the battery current** (e.g. 6 A while the BMS shows 4 A and `QPIGS[19]` = 0), so PV below ~90 W is invisible in both fields (see [integration.md](integration.md#power-balance-and-self-consumption)). Battery voltage matches the BMS on average (one single reading 0.3 V lower) |
 | 16 | status bits | — | `00010000` | Char 0 = b7 … char 7 = b0. b7 SBU priority version added, b6 configuration changed, b5 SCC firmware updated, b4 load on, b3 battery voltage steady while charging, b2 charging on, b1 SCC charging, b0 AC charging (spec). Only b4 (load on) seen so far, set in mode B even at 0 W |
 | 17 | (not parsed) | 10 mV | `00` | Battery voltage offset for fans on (spec PI30 2015; older docs call it RSV1) |
 | 18 | (not parsed) | — | `00` | EEPROM version (spec; older docs RSV2) |
-| 19 | (not parsed) | W | `00000` | **PV charging power** (spec). Use this instead of `pv_current × pv_voltage`; re-check with PV |
+| 19 | (not parsed) | W | `00000` | **PV charging power** (spec); equals `QPIGS[12]` × `[13]` within 1 %. Against BMS + load it is ~85–95 W below the real PV power at low power and ~45–60 W below at 600–870 W (history check 2026-10-06), so weak PV reads 0 |
 | 20 | (not parsed) | — | `010` | Device status 2: b10 charging to float, b9 switched on, b8 dustproof installed (spec). **b9 verified: `010` in modes B/L, `000` in mode S (output off by schedule)** |
 
 ## Q1 fields (partly decoded)
