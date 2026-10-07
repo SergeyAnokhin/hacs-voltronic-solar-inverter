@@ -69,7 +69,7 @@ Definitions: *load* = `QPIGS[5]`; *battery* term = battery voltage × (I<sub>dis
 
 | State (condition) | Setting | Default | + per W of load | Drawn from the grid without `HGRID` showing it (built in) |
 |---|---|---|---|---|
-| Battery mode (output on, not L) | *Own consumption (battery mode)* | 53 W | 3.5 % | 3 W |
+| Battery mode (output on, not L) | *Own consumption (battery mode)* | 48 W | 3.5 % | 3 W |
 | Line mode (`QMOD` L) | *Own consumption (line mode)* | 47 W | 1.3 % | 17 W |
 | Output off, standby (`QPIGS` status 2 b9 = 0, mode not C) | *Own consumption (output off, standby)* | 12 W | — | all of it (the setting) |
 | Output off, solar charging (b9 = 0, `QMOD` C) | *Own consumption (output off, solar charging)* | 34 W | — | 3 W |

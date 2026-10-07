@@ -16,7 +16,7 @@ _spec = importlib.util.spec_from_file_location("power_balance", _PATH)
 balance = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(balance)
 
-OWN = balance.DEFAULT_OWN_CONSUMPTION  # battery 53, line 47, standby 12, solar charging 34 W
+OWN = balance.DEFAULT_OWN_CONSUMPTION  # battery 48, line 47, standby 12, solar charging 34 W
 # Night, mode B, ~300 W load: 25.10 V x 15 A discharge, 317 W load, no PV, grid present.
 LOAD = parse_qpigs(answered("snapshot_B_night_load_300w.json")["QPIGS"])
 # Mode L, AC charging 2 A at 22.8 V, no discharge.
@@ -54,14 +54,14 @@ def test_own_consumption_key():
 
 
 def test_own_consumption_grows_with_the_load():
-    # 53 W + 3.5 % of 317 W
-    assert round(balance.own_consumption(LOAD, "battery", OWN), 3) == 64.095
+    # 48 W + 3.5 % of 317 W
+    assert round(balance.own_consumption(LOAD, "battery", OWN), 3) == 59.095
     assert balance.own_consumption(OFF, "standby", OWN) == 12
 
 
 def test_pv_power_calculated_from_inverter_currents():
-    # 317 W load + 64.1 W own - 376.5 W from the battery - 3 W unseen grid draw: ~0 at night.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN) == 1.6
+    # 317 W load + 59.1 W own - 376.5 W from the battery - 3 W unseen grid draw: ~0 at night.
+    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN) == 0
     # Line mode, battery charging 2 A: load + own + charge - (HGRID + 17 W it does not show).
     s = AC_CHARGING
     charge = s.battery_voltage * s.battery_charge_current
@@ -71,10 +71,10 @@ def test_pv_power_calculated_from_inverter_currents():
 
 
 def test_pv_power_calculated_from_external_battery():
-    # BMS says only 300 W leave the battery: ~78 W must come from PV.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, -300) == 78.1
+    # BMS says only 300 W leave the battery: ~73 W must come from PV.
+    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, -300) == 73.1
     # Charging 200 W while feeding the load: PV covers both plus own consumption.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, 200) == 578.1
+    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, 200) == 573.1
     # Never negative.
     assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, -1000) == 0
 
@@ -88,7 +88,7 @@ def test_pv_power_calculated_without_grid():
     # No grid: nothing is drawn unseen from it, the battery supplies all of the own use.
     load = GRID_OFF.ac_output_active_power
     out = GRID_OFF.battery_voltage * GRID_OFF.battery_discharge_current
-    expected = max(0.0, round(load + 53 + 0.035 * load - out, 1))
+    expected = max(0.0, round(load + 48 + 0.035 * load - out, 1))
     assert balance.pv_power_calculated(GRID_OFF, "battery", 0, OWN) == expected
 
 

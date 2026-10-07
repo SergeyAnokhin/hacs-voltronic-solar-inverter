@@ -33,12 +33,12 @@ def _grid(grid_power: int | None, mode: str | None) -> float | None:
 BATTERY, LINE, STANDBY, SOLAR_CHARGING = "battery", "line", "standby", "solar_charging"
 
 # Defaults = total own consumption with no load, measured on the owner's VMII-4000
-# (external AC-input meter + BMS, 2026-10-05..07): battery mode 50 W from the
-# battery + 3 W from the grid; line mode 47 W; output off at night (standby,
-# mode S) 12 W, all from the grid; output off while charging from PV (mode C)
-# 31 W from the PV/battery side + 3 W from the grid.
+# (external AC-input meter + BMS, 2026-10-05..07): battery mode 45 W from the
+# battery (BMS at 0-3 W load, 2026-10-07 night) + 3 W from the grid; line mode
+# 47 W; output off at night (standby, mode S) 12 W, all from the grid; output off
+# while charging from PV (mode C) 31 W from the PV/battery side + 3 W from the grid.
 DEFAULT_OWN_CONSUMPTION: dict[str, float] = {
-    BATTERY: 53.0,
+    BATTERY: 48.0,
     LINE: 47.0,
     STANDBY: 12.0,
     SOLAR_CHARGING: 34.0,

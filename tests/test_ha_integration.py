@@ -659,13 +659,13 @@ async def test_own_consumption_and_balance_sensors(hass: HomeAssistant, inverter
     inverter.table["QPIGS"] = answered("snapshot_B_night_load_300w.json")["QPIGS"]  # 25.10 V x 15 A discharge, 317 W load
     entry = await setup(hass)
     battery_id = f"number.{PREFIX}_own_consumption_battery_mode"
-    assert hass.states.get(battery_id).state == "53.0"
+    assert hass.states.get(battery_id).state == "48.0"
     assert hass.states.get(f"number.{PREFIX}_own_consumption_line_mode").state == "47.0"
     assert hass.states.get(f"number.{PREFIX}_own_consumption_output_off_standby").state == "12.0"
     assert hass.states.get(f"number.{PREFIX}_own_consumption_output_off_solar_charging").state == "34.0"
     assert hass.states.get(f"sensor.{PREFIX}_inverter_losses").state == "60"  # 59.5 W, whole watts
-    # 317 W load + 53 W + 3.5 % own - 376.5 W from the battery - 3 W unseen from the grid
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "2"
+    # 317 W load + 48 W + 3.5 % own - 376.5 W from the battery - 3 W unseen from the grid
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "0"
 
     await hass.services.async_call(
         "number", "set_value", {"entity_id": battery_id, "value": 100}, blocking=True
