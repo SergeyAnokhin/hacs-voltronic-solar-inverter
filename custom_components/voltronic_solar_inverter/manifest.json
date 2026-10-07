@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/SergeyAnokhin/hacs-voltronic-solar-inverter/issues",
   "loggers": ["custom_components.voltronic_solar_inverter"],
   "requirements": [],
-  "version": "0.4.7"
+  "version": "0.4.8"
 }

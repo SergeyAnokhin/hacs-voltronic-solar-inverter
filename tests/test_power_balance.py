@@ -79,3 +79,12 @@ def test_net_generation():
     s = AC_CHARGING
     charge = s.battery_voltage * s.battery_charge_current
     assert balance.net_generation(s, 400, 16) == round(s.ac_output_active_power + charge - 400 - 16, 1)
+
+
+def test_pv_power_calculated_output_off():
+    off = parse_qpigs(answered("snapshot_S_night_output_off.json")["QPIGS"])  # status 2 b9 = 0
+    # Mode C: the solar charger stage itself draws ~31 W from the DC side.
+    assert balance.pv_power_calculated(off, "charging", 0, 100) == 131
+    assert balance.pv_power_calculated(off, "charging", 0, -31) == 0  # dusk: battery feeds it
+    # Standby: the inverter lives on the grid, nothing to add.
+    assert balance.pv_power_calculated(off, "standby", 0, 0) == 0

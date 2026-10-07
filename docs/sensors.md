@@ -52,7 +52,7 @@ Implemented by [`smoothing.SmoothedValue`](../custom_components/voltronic_solar_
 
 ## Power balance sensors
 
-Fast, power (W), mean of the last 10 min (single samples jump by ~25 W because of the whole-ampere battery currents), written with the smoothing rules above. Code: [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py).
+Fast, power (W), written with the smoothing rules above: `inverter_losses` is the mean of the last 10 min (single samples jump by ~25 W because of the whole-ampere battery currents), `pv_power_calculated` the mean of the last 60 s like `pv_power` (since 0.4.8), so the two can be compared. Code: [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py).
 
 ```text
 PV + battery discharge + grid import = load + battery charge + inverter losses
@@ -63,7 +63,7 @@ Definitions: *load* = `QPIGS[5]`; *battery* term = battery voltage × (I<sub>dis
 | Key | Formula | Notes |
 |---|---|---|
 | `inverter_losses` | `PV(QPIGS[19]) + battery + grid − load` | Inputs minus outputs: conversion losses plus the inverter's own consumption (at night with no PV, just that). Unknown (`None`) in mode L (line) without `HGRID`; in other modes a missing `HGRID` counts as 0 W |
-| `pv_power_calculated` | `max(0, load + loss_model(mode, load) + battery_power − grid)` | The PV power the balance implies. `loss_model` = `power_balance.LOSS_MODEL`: mode B 50 W + 3.5 % of load, mode L 28 W + 1 %, output off 0. `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. Same `HGRID` rule as above. Clamped at 0 |
+| `pv_power_calculated` | `max(0, load + loss_model(mode, load) + battery_power − grid)` | The PV power the balance implies. `loss_model` = `power_balance.LOSS_MODEL`: mode B 50 W + 3.5 % of load, mode L 28 W + 1 %, output off in mode C (charging from PV) 31 W, standby 0. `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. Same `HGRID` rule as above. Clamped at 0 |
 
 **Self-consumption** (used by the daily energy balance, not by `pv_power_calculated` since 0.4.7) is the part of the inverter's own draw that its sensors do **not** show (not its total draw). It comes from three HA-only number entities (never sent to the inverter, restored after a restart), 0–500 W. Which one applies is chosen by `power_balance.self_consumption_key`:
 
@@ -85,6 +85,7 @@ Fast, kWh, 2 decimals. Every raw fast sample of a power is integrated with the t
 | `grid_daily_energy` | grid import = `max(0, HGRID[6])` | `total_increasing` | Export, if any, counts as 0. Only with the H dialect |
 | `battery_daily_energy` | `battery_power` = V × (I<sub>chg</sub> − I<sub>dis</sub>) | `total` + `last_reset` = local midnight | + = charged, − = discharged; may be negative; rough (whole amperes) |
 | `balance_daily_energy` | `power_balance.net_generation` = load + battery(charge − discharge) − grid import − self-consumption of the current mode | `total` + `last_reset` | = PV energy minus all losses; may be negative (night). Only with the H dialect |
+| `pv_calculated_daily_energy` | `power_balance.pv_power_calculated` (each raw sample, not the 60 s mean) | `total_increasing` | The real PV energy. Uses the external battery sensor when configured; while it is unusable the sample is `None`, which breaks the interval (nothing added) |
 
 ## Daily maximum sensors
 

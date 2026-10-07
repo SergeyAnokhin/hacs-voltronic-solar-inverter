@@ -102,7 +102,7 @@ Sample (night, battery mode, grid present, 300 W load): `234.1 50.0 230.1 50.0 0
 | 16 | status bits | — | `00010000` | Char 0 = b7 … char 7 = b0. b7 SBU priority version added, b6 configuration changed, b5 SCC firmware updated, b4 load on, b3 battery voltage steady while charging, b2 charging on, b1 SCC charging, b0 AC charging (spec). Only b4 (load on) seen so far, set in mode B even at 0 W |
 | 17 | (not parsed) | 10 mV | `00` | Battery voltage offset for fans on (spec PI30 2015; older docs call it RSV1) |
 | 18 | (not parsed) | — | `00` | EEPROM version (spec; older docs RSV2) |
-| 19 | (not parsed) | W | `00000` | **PV charging power** (spec); equals `QPIGS[12]` × `[13]` within 1 %. Against BMS + load it is ~85–95 W below the real PV power at low power and ~45–60 W below at 600–870 W (history check 2026-10-06), so weak PV reads 0 |
+| 19 | (not parsed) | W | `00000` | **PV charging power** (spec); equals `QPIGS[12]` × `[13]` within 1 %. Against BMS + load it is ~85–95 W below the real PV power at low power and ~45–60 W below at 600–870 W (history check 2026-10-06), so weak PV reads 0. In mode C (output off, 2026-10-07) it is the BMS charge − 37 W: smaller than what reaches the battery |
 | 20 | (not parsed) | — | `010` | Device status 2: b10 charging to float, b9 switched on, b8 dustproof installed (spec). **b9 verified: `010` in modes B/L, `000` in mode S (output off by schedule)** |
 
 ## Q1 fields (partly decoded)

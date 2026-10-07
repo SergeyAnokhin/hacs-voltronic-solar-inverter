@@ -38,10 +38,15 @@ DEFAULT_SELF_CONSUMPTION = {BATTERY: 0.0, LINE: 16.0, OUTPUT_OFF: 13.0}
 # ~4 days of the owner's history (2026-10-06): BMS out - load = 50.2 W + 3.45 %
 # at night; HGRID - load = 28 W + 1 % with the battery idle. The part of the own
 # draw that comes unseen from the grid (16 W in L, 13 W output off) cancels out.
+# Output off while charging from PV (mode C, 2026-10-07): the solar charger stage
+# draws ~31 W from the DC side (the BMS showed -31 W at dusk with PV gone, and
+# exactly 0 while weak PV still covered it); in standby (S) it draws from the grid.
+CHARGING = "charging"
 LOSS_MODEL: dict[str, tuple[float, float]] = {
     BATTERY: (50.0, 0.035),
     LINE: (28.0, 0.01),
     OUTPUT_OFF: (0.0, 0.0),
+    CHARGING: (31.0, 0.0),
 }
 
 
@@ -100,5 +105,8 @@ def pv_power_calculated(
             status.battery_charge_current - status.battery_discharge_current
         )
     load = status.ac_output_active_power
-    constant, fraction = LOSS_MODEL[self_consumption_key(status, mode)]
+    key = self_consumption_key(status, mode)
+    if key == OUTPUT_OFF and mode == CHARGING:
+        key = CHARGING
+    constant, fraction = LOSS_MODEL[key]
     return round(max(0.0, load + constant + fraction * load + battery_power - grid), 1)

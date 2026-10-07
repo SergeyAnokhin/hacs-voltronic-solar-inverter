@@ -698,7 +698,7 @@ async def test_pv_power_calculated_with_external_battery_sensor(
 
 async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
     entry = await setup(hass)
-    for key in ("load", "grid", "battery", "balance"):
+    for key in ("load", "grid", "battery", "balance", "pv_calculated"):
         state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
         assert state.state == "0.0", key  # first sample: nothing integrated yet
         assert state.attributes["unit_of_measurement"] == "kWh"
@@ -707,9 +707,9 @@ async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> 
         state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
         assert state.attributes["state_class"] == "total"
         assert dt_util.parse_datetime(state.attributes["last_reset"]) == dt_util.start_of_local_day()
-    assert hass.states.get(f"sensor.{PREFIX}_load_daily_energy").attributes["state_class"] == (
-        "total_increasing"
-    )
+    for key in ("load", "pv_calculated"):
+        state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
+        assert state.attributes["state_class"] == "total_increasing", key
 
     # One hour later, in one step longer than the allowed gap: nothing is added.
     with patch(

@@ -129,6 +129,9 @@
       "balance_daily_energy": {
         "name": "Balance daily energy"
       },
+      "pv_calculated_daily_energy": {
+        "name": "PV calculated daily energy"
+      },
       "pv_power_max_today": {
         "name": "PV power max today",
         "state_attributes": {

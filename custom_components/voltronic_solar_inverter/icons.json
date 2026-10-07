@@ -88,6 +88,9 @@
       "balance_daily_energy": {
         "default": "mdi:scale-balance"
       },
+      "pv_calculated_daily_energy": {
+        "default": "mdi:solar-power-variant"
+      },
       "pv_power_median_10min": {
         "default": "mdi:solar-power-variant-outline"
       },

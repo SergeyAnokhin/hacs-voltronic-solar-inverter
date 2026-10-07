@@ -583,12 +583,13 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     ),
 )
 
-# Power balance (power_balance.py), mean of the last 10 minutes: single samples
-# jump by ~25 W because the battery currents are whole amperes.
-def _balance(key: str, balance_fn) -> VoltronicBalanceSensorDescription:
+# Power balance (power_balance.py): single samples jump by ~25 W because the
+# battery currents are whole amperes. Losses: mean of the last 10 minutes; the
+# calculated PV power: same 60 s mean as PV power, so the two can be compared.
+def _balance(key: str, balance_fn, window: float = MEDIAN_WINDOW) -> VoltronicBalanceSensorDescription:
     return VoltronicBalanceSensorDescription(
         # value_fn is unused: VoltronicBalanceSensor samples balance_fn
-        **_power(key, lambda d: None, smoothing_window=MEDIAN_WINDOW),
+        **_power(key, lambda d: None, smoothing_window=window),
         balance_fn=balance_fn,
     )
 
@@ -598,6 +599,7 @@ BALANCE_SENSORS: tuple[VoltronicBalanceSensorDescription, ...] = (
     _balance(
         "pv_power_calculated",
         lambda d, _, battery: pv_power_calculated(d.status, d.mode, d.grid_power, battery),
+        SMOOTHING_WINDOW,
     ),
 )
 
@@ -625,7 +627,9 @@ ATTR_MAX_TIME = "max_time"
 class VoltronicEnergySensorDescription(VoltronicFastSensorDescription):
     """Energy since local midnight, integrated from the power (W) of power_fn."""
 
-    power_fn: Callable[[FastData, Mapping[str, float]], float | None]
+    # (data, self-consumption settings, external battery power in W or None)
+    power_fn: Callable[[FastData, Mapping[str, float], float | None], float | None]
+    uses_battery_sensor: bool = False  # skip samples while the configured battery sensor is unusable
 
 
 def _grid_import(d: FastData) -> float | None:
@@ -651,21 +655,27 @@ def _energy(
 
 # Signed ones can go negative: a total with last_reset (local midnight), not total_increasing.
 DAILY_ENERGY_SENSORS: tuple[VoltronicEnergySensorDescription, ...] = (
-    _energy("load_daily_energy", lambda d, _: d.status.ac_output_active_power),
-    _energy("grid_daily_energy", lambda d, _: _grid_import(d), requires="grid_power"),
+    _energy("load_daily_energy", lambda d, _, __: d.status.ac_output_active_power),
+    _energy("grid_daily_energy", lambda d, _, __: _grid_import(d), requires="grid_power"),
     # + = charged, - = discharged (whole-ampere currents: rough)
     _energy(
         "battery_daily_energy",
-        lambda d, _: d.status.battery_power,
+        lambda d, _, __: d.status.battery_power,
         state_class=SensorStateClass.TOTAL,
     ),
     _energy(
         "balance_daily_energy",
-        lambda d, own: net_generation(
+        lambda d, own, _: net_generation(
             d.status, d.grid_power, own[self_consumption_key(d.status, d.mode)]
         ),
         requires="grid_power",
         state_class=SensorStateClass.TOTAL,
+    ),
+    # The real PV energy: integral of the (unsmoothed) calculated PV power.
+    _energy(
+        "pv_calculated_daily_energy",
+        lambda d, _, battery: pv_power_calculated(d.status, d.mode, d.grid_power, battery),
+        uses_battery_sensor=True,
     ),
 )
 
@@ -828,7 +838,24 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
             self.async_write_ha_state()
 
 
-class VoltronicBalanceSensor(VoltronicSmoothedSensor):
+class _ExternalBatteryMixin:
+    """Reads the optional external battery power sensor (options)."""
+
+    hass: HomeAssistant
+    coordinator: VoltronicFastCoordinator
+
+    def _external_battery(self) -> tuple[bool, float | None]:
+        """(usable, W). Not configured: (True, None) = use the inverter's currents."""
+        entity_id = self.coordinator.config_entry.options.get(CONF_BATTERY_POWER_SENSOR)
+        if not entity_id:
+            return True, None
+        if self.hass is None:
+            return False, None  # not added yet
+        value = _power_state(self.hass, entity_id)
+        return value is not None, value
+
+
+class VoltronicBalanceSensor(_ExternalBatteryMixin, VoltronicSmoothedSensor):
     """Smoothed power-balance value; reads the self-consumption numbers from runtime
     data and, if configured, the external battery power sensor."""
 
@@ -840,16 +867,11 @@ class VoltronicBalanceSensor(VoltronicSmoothedSensor):
             self._smoother.add(time.monotonic(), self._sample())
 
     def _sample(self) -> StateType:
-        entry = self.coordinator.config_entry
-        battery = None
-        if entity_id := entry.options.get(CONF_BATTERY_POWER_SENSOR):
-            if self.hass is None:
-                return None  # not added yet; async_added_to_hass takes the first sample
-            battery = _power_state(self.hass, entity_id)
-            if battery is None:
-                return None  # skip the sample rather than mix in the inverter's currents
+        usable, battery = self._external_battery()
+        if not usable:
+            return None  # skip the sample rather than mix in the inverter's currents
         return self.entity_description.balance_fn(
-            self.coordinator.data, entry.runtime_data.self_consumption, battery
+            self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption, battery
         )
 
 
@@ -928,7 +950,7 @@ class VoltronicDailyMaxSensor(VoltronicEntity, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
 
 
-class VoltronicDailyEnergySensor(VoltronicEntity, RestoreEntity, SensorEntity):
+class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, RestoreEntity, SensorEntity):
     """Energy since local midnight, integrated in the integration from every sample.
 
     Integrating the raw samples keeps the result exact; only the writes are
@@ -966,13 +988,14 @@ class VoltronicDailyEnergySensor(VoltronicEntity, RestoreEntity, SensorEntity):
             self._add_sample()
 
     def _add_sample(self) -> bool:
-        return self._energy.add(
-            dt_util.now().date(),
-            time.monotonic(),
-            self.entity_description.power_fn(
-                self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption
-            ),
-        )
+        description = self.entity_description
+        usable, battery = self._external_battery()
+        power = None  # breaks the interval: nothing is integrated across it
+        if usable or not description.uses_battery_sensor:
+            power = description.power_fn(
+                self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption, battery
+            )
+        return self._energy.add(dt_util.now().date(), time.monotonic(), power)
 
     @property
     def native_value(self) -> StateType:
