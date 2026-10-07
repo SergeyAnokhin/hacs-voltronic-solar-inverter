@@ -700,13 +700,13 @@ async def test_pv_power_calculated_with_external_battery_sensor(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options["battery_power_sensor"] == "sensor.bms_power"
-    # 317 + 50 + 3.5 % - 300 W from the BMS = 78 W of PV the inverter does not show.
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "78"
+    # 317 + 48 + 3.5 % - 300 W from the BMS - 3 W unseen grid draw = 73 W of PV the inverter does not show.
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "73"
     # An unusable BMS state skips the sample instead of falling back to the inverter.
     hass.states.async_set("sensor.bms_power", "unavailable")
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "78"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "73"
 
 
 async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
