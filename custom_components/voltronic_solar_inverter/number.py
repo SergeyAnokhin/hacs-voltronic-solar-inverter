@@ -1,6 +1,6 @@
-"""Numbers for charge currents and battery voltage thresholds, plus three
-HA-only settings: the inverter's self-consumption not seen by its sensors
-(battery mode / line mode / output off).
+"""Numbers for charge currents and battery voltage thresholds, plus four
+HA-only settings: the inverter's total own consumption (battery mode / line
+mode / standby / solar charging).
 
 Currents use the lists the inverter reports (QMCHGCR / QMUCHGCR); voltage
 thresholds exist only for 24 V systems, whose ranges are documented. Float
@@ -31,8 +31,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import VoltronicConfigEntry, VoltronicFastCoordinator
-from .entity import VoltronicControlEntity, VoltronicEntity
-from .power_balance import BATTERY, LINE, OUTPUT_OFF
+from .entity import VoltronicControlEntity, VoltronicEntity, remove_entities
+from .power_balance import BATTERY, LINE, SOLAR_CHARGING, STANDBY
 from .protocol import InvalidCommandError, RatedInfo, WriteCommand, commands
 
 PARALLEL_UPDATES = 1
@@ -117,13 +117,23 @@ async def async_setup_entry(
     if data.slow.data.rated.battery_rating_voltage == 24.0:
         descriptions += [_voltage_description(key) for key in commands.VOLTAGE_SETTINGS_24V]
     async_add_entities(VoltronicNumber(data.slow, d) for d in descriptions)
+    # 0.4.5-0.4.8 stored only the part the inverter's sensors miss, under other keys;
+    # drop them so the new settings start from the measured totals.
+    remove_entities(hass, identity, "number", REMOVED_NUMBER_KEYS)
     async_add_entities(
-        VoltronicSelfConsumptionNumber(data.fast, d, setting)
-        for d, setting in SELF_CONSUMPTION_NUMBERS
+        VoltronicOwnConsumptionNumber(data.fast, d, setting)
+        for d, setting in OWN_CONSUMPTION_NUMBERS
     )
 
 
-def _self_consumption_description(key: str) -> NumberEntityDescription:
+REMOVED_NUMBER_KEYS = (
+    "self_consumption_battery_mode",
+    "self_consumption_line_mode",
+    "self_consumption_output_off",
+)
+
+
+def _own_consumption_description(key: str) -> NumberEntityDescription:
     return NumberEntityDescription(
         key=key,
         translation_key=key,
@@ -137,12 +147,13 @@ def _self_consumption_description(key: str) -> NumberEntityDescription:
     )
 
 
-# Stored in HA only (never sent to the inverter): the inverter's own consumption
-# that its sensors do not show, per operating state.
-SELF_CONSUMPTION_NUMBERS: tuple[tuple[NumberEntityDescription, str], ...] = (
-    (_self_consumption_description("self_consumption_battery_mode"), BATTERY),
-    (_self_consumption_description("self_consumption_line_mode"), LINE),
-    (_self_consumption_description("self_consumption_output_off"), OUTPUT_OFF),
+# Stored in HA only (never sent to the inverter): what the inverter uses itself
+# with no load, per operating state.
+OWN_CONSUMPTION_NUMBERS: tuple[tuple[NumberEntityDescription, str], ...] = (
+    (_own_consumption_description("own_consumption_battery_mode"), BATTERY),
+    (_own_consumption_description("own_consumption_line_mode"), LINE),
+    (_own_consumption_description("own_consumption_standby"), STANDBY),
+    (_own_consumption_description("own_consumption_solar_charging"), SOLAR_CHARGING),
 )
 
 
@@ -157,7 +168,7 @@ class VoltronicNumber(VoltronicControlEntity, NumberEntity):
         await self.async_send(lambda: self.entity_description.command_fn(value))
 
 
-class VoltronicSelfConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], RestoreNumber):
+class VoltronicOwnConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], RestoreNumber):
     """User's estimate of the inverter's own consumption; restored after a restart."""
 
     def __init__(
@@ -171,7 +182,7 @@ class VoltronicSelfConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], 
 
     @property
     def _values(self) -> dict[str, float]:
-        return self.coordinator.config_entry.runtime_data.self_consumption
+        return self.coordinator.config_entry.runtime_data.own_consumption
 
     @property
     def available(self) -> bool:

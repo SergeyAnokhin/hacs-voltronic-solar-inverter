@@ -55,7 +55,7 @@ Implemented by [`smoothing.SmoothedValue`](../custom_components/voltronic_solar_
 Fast, power (W), written with the smoothing rules above: `inverter_losses` is the mean of the last 10 min (single samples jump by ~25 W because of the whole-ampere battery currents), `pv_power_calculated` the mean of the last 60 s like `pv_power` (since 0.4.8), so the two can be compared. Code: [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py).
 
 ```text
-PV + battery discharge + grid import = load + battery charge + inverter losses
+PV + battery discharge + grid import = load + battery charge + own consumption
 ```
 
 Definitions: *load* = `QPIGS[5]`; *battery* term = battery voltage × (I<sub>discharge</sub> − I<sub>charge</sub>), positive when the battery gives power; *grid* = `HGRID[6]`.
@@ -63,17 +63,18 @@ Definitions: *load* = `QPIGS[5]`; *battery* term = battery voltage × (I<sub>dis
 | Key | Formula | Notes |
 |---|---|---|
 | `inverter_losses` | `PV(QPIGS[19]) + battery + grid − load` | Inputs minus outputs: conversion losses plus the inverter's own consumption (at night with no PV, just that). Unknown (`None`) in mode L (line) without `HGRID`; in other modes a missing `HGRID` counts as 0 W |
-| `pv_power_calculated` | `max(0, load + loss_model(mode, load) + battery_power − grid)` | The PV power the balance implies. `loss_model` = `power_balance.LOSS_MODEL`: mode B 50 W + 3.5 % of load, mode L 28 W + 1 %, output off in mode C (charging from PV) 31 W, standby 0. `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. Same `HGRID` rule as above. Clamped at 0 |
+| `pv_power_calculated` | `max(0, load + own + battery_power − real grid)` | The PV power the balance implies. `own` = `power_balance.own_consumption` (the setting of the current state + the load-dependent part, below). `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. *Real grid* = `HGRID[6]` + the part of the own consumption `HGRID` does not report (below), only while the grid is present. Same `HGRID` rule as above. Clamped at 0 |
 
-**Self-consumption** (used by the daily energy balance, not by `pv_power_calculated` since 0.4.7) is the part of the inverter's own draw that its sensors do **not** show (not its total draw). It comes from three HA-only number entities (never sent to the inverter, restored after a restart), 0–500 W. Which one applies is chosen by `power_balance.self_consumption_key`:
+**Own consumption** (since 0.4.9) = everything the inverter uses itself (control board, power stage, conversion losses), in W. Four HA-only number entities (never sent to the inverter, restored after a restart, 0–500 W) hold it **with no load**; the state is picked by `power_balance.own_consumption_key`. Used by `pv_power_calculated`, `pv_calculated_daily_energy` and `balance_daily_energy`.
 
-| Condition | Setting used | Default |
-|---|---|---|
-| Output off (`QPIGS` status 2 bit 9 = 0, i.e. modes S/C; without that field: mode is neither L nor B) | output off | 13 W |
-| Mode L (line) | line mode | 16 W |
-| Anything else (mode B) | battery mode | 0 W (the inverter's battery current already contains its losses; hidden PV is not visible with inverter data, see [integration.md](integration.md#power-balance-and-self-consumption)) |
+| State (condition) | Setting | Default | + per W of load | Drawn from the grid without `HGRID` showing it (built in) |
+|---|---|---|---|---|
+| Battery mode (output on, not L) | *Own consumption (battery mode)* | 53 W | 3.5 % | 3 W |
+| Line mode (`QMOD` L) | *Own consumption (line mode)* | 47 W | 1.3 % | 17 W |
+| Output off, standby (`QPIGS` status 2 b9 = 0, mode not C) | *Own consumption (output off, standby)* | 12 W | — | all of it (the setting) |
+| Output off, solar charging (b9 = 0, `QMOD` C) | *Own consumption (output off, solar charging)* | 34 W | — | 3 W |
 
-The defaults were measured on the owner's VMII-4000 on 2026-10-05 with an external meter (details and log in [integration.md](integration.md#power-balance-and-self-consumption)).
+Defaults and the built-in parts were measured on the owner's VMII-4000 on 2026-10-05..07 with an external AC-input meter and the BMS (details in [integration.md](integration.md#power-balance-and-self-consumption)). The unseen grid part matters because the balance must count the energy that came in: without the grid (`QPIGS[0]` = 0) it is 0 and the battery supplies all of the own consumption. 0.4.5–0.4.8 had three *Self-consumption* numbers that held only that unseen part; they are removed from the registry at setup.
 
 ## Daily energy sensors
 
@@ -84,7 +85,7 @@ Fast, kWh, 2 decimals. Every raw fast sample of a power is integrated with the t
 | `load_daily_energy` | load = `QPIGS[5]` | `total_increasing` | |
 | `grid_daily_energy` | grid import = `max(0, HGRID[6])` | `total_increasing` | Export, if any, counts as 0. Only with the H dialect |
 | `battery_daily_energy` | `battery_power` = V × (I<sub>chg</sub> − I<sub>dis</sub>) | `total` + `last_reset` = local midnight | + = charged, − = discharged; may be negative; rough (whole amperes) |
-| `balance_daily_energy` | `power_balance.net_generation` = load + battery(charge − discharge) − grid import − self-consumption of the current mode | `total` + `last_reset` | = PV energy minus all losses; may be negative (night). Only with the H dialect |
+| `balance_daily_energy` | `power_balance.net_generation` = load + battery(charge − discharge) − real grid import (`HGRID` + the unseen part of the own consumption, see above) | `total` + `last_reset` | = PV energy minus all losses; may be negative (night). Only with the H dialect |
 | `pv_calculated_daily_energy` | `power_balance.pv_power_calculated` (each raw sample, not the 60 s mean) | `total_increasing` | The real PV energy. Uses the external battery sensor when configured; while it is unusable the sample is `None`, which breaks the interval (nothing added) |
 
 ## Daily maximum sensors

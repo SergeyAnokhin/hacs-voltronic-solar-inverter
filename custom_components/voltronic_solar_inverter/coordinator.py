@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, LOGGER, MAX_MISSED_UPDATES
-from .power_balance import DEFAULT_SELF_CONSUMPTION
+from .power_balance import DEFAULT_OWN_CONSUMPTION
 from .protocol import (
     DeviceIdentity,
     GeneralStatus,
@@ -70,11 +70,11 @@ class VoltronicRuntimeData:
     identity: DeviceIdentity
     fast: VoltronicFastCoordinator
     slow: VoltronicSlowCoordinator
-    # Inverter self-consumption in W not seen by its sensors, set by the user (number
-    # entities), keyed by power_balance.BATTERY / LINE / OUTPUT_OFF; used by the
-    # calculated PV power sensor.
-    self_consumption: dict[str, float] = field(
-        default_factory=lambda: dict(DEFAULT_SELF_CONSUMPTION)
+    # The inverter's total own consumption in W per state, set by the user (number
+    # entities), keyed by power_balance.BATTERY / LINE / STANDBY / SOLAR_CHARGING;
+    # used by the calculated PV power and the daily energy balance.
+    own_consumption: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_OWN_CONSUMPTION)
     )
 
 

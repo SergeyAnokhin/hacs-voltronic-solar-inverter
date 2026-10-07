@@ -127,14 +127,17 @@
       }
     },
     "number": {
-      "self_consumption_battery_mode": {
+      "own_consumption_battery_mode": {
         "default": "mdi:battery-arrow-down"
       },
-      "self_consumption_line_mode": {
+      "own_consumption_line_mode": {
         "default": "mdi:transmission-tower"
       },
-      "self_consumption_output_off": {
+      "own_consumption_standby": {
         "default": "mdi:power-plug-off"
+      },
+      "own_consumption_solar_charging": {
+        "default": "mdi:solar-power"
       }
     }
   }

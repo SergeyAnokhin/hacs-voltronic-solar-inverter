@@ -655,22 +655,35 @@ async def test_diagnostics_redacts_serial(hass: HomeAssistant, inverter: Inverte
     assert result["raw_responses"]["HEEP2"] == H_LBU["HEEP2"]
 
 
-async def test_self_consumption_and_balance_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
+async def test_own_consumption_and_balance_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
     inverter.table["QPIGS"] = answered("snapshot_B_night_load_300w.json")["QPIGS"]  # 25.10 V x 15 A discharge, 317 W load
     entry = await setup(hass)
-    battery_id = f"number.{PREFIX}_self_consumption_battery_mode"
-    assert hass.states.get(battery_id).state == "0.0"
-    assert hass.states.get(f"number.{PREFIX}_self_consumption_line_mode").state == "16.0"
-    assert hass.states.get(f"number.{PREFIX}_self_consumption_output_off").state == "13.0"
+    battery_id = f"number.{PREFIX}_own_consumption_battery_mode"
+    assert hass.states.get(battery_id).state == "53.0"
+    assert hass.states.get(f"number.{PREFIX}_own_consumption_line_mode").state == "47.0"
+    assert hass.states.get(f"number.{PREFIX}_own_consumption_output_off_standby").state == "12.0"
+    assert hass.states.get(f"number.{PREFIX}_own_consumption_output_off_solar_charging").state == "34.0"
     assert hass.states.get(f"sensor.{PREFIX}_inverter_losses").state == "60"  # 59.5 W, whole watts
-    # 317 W load + 50 W + 3.5 % losses - 376.5 W from the battery
+    # 317 W load + 53 W + 3.5 % own - 376.5 W from the battery - 3 W unseen from the grid
     assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "2"
 
     await hass.services.async_call(
         "number", "set_value", {"entity_id": battery_id, "value": 100}, blocking=True
     )
-    assert entry.runtime_data.self_consumption["battery"] == 100
+    assert entry.runtime_data.own_consumption["battery"] == 100
     assert inverter.writes == []  # HA-only setting, nothing sent
+
+
+async def test_old_self_consumption_numbers_are_removed(hass: HomeAssistant, inverter: Inverter) -> None:
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    old = registry.async_get_or_create(
+        "number", DOMAIN, f"{SERIAL}_self_consumption_line_mode", config_entry=entry
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(old.entity_id) is None
 
 
 async def test_pv_power_calculated_with_external_battery_sensor(

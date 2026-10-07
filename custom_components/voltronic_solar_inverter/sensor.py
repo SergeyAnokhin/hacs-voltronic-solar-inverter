@@ -59,7 +59,7 @@ from .coordinator import (
     VoltronicRuntimeData,
 )
 from .entity import VoltronicEntity, is_supported, remove_entities
-from .power_balance import inverter_losses, net_generation, pv_power_calculated, self_consumption_key
+from .power_balance import inverter_losses, net_generation, pv_power_calculated
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
 from .smoothing import DailyEnergy, DailyMax, SmoothedValue
 from .protocol.parsers import (
@@ -598,7 +598,7 @@ BALANCE_SENSORS: tuple[VoltronicBalanceSensorDescription, ...] = (
     _balance("inverter_losses", lambda d, _, __: inverter_losses(d.status, d.mode, d.grid_power)),
     _balance(
         "pv_power_calculated",
-        lambda d, _, battery: pv_power_calculated(d.status, d.mode, d.grid_power, battery),
+        lambda d, own, battery: pv_power_calculated(d.status, d.mode, d.grid_power, own, battery),
         SMOOTHING_WINDOW,
     ),
 )
@@ -665,16 +665,14 @@ DAILY_ENERGY_SENSORS: tuple[VoltronicEnergySensorDescription, ...] = (
     ),
     _energy(
         "balance_daily_energy",
-        lambda d, own, _: net_generation(
-            d.status, d.grid_power, own[self_consumption_key(d.status, d.mode)]
-        ),
+        lambda d, own, _: net_generation(d.status, d.mode, d.grid_power, own),
         requires="grid_power",
         state_class=SensorStateClass.TOTAL,
     ),
     # The real PV energy: integral of the (unsmoothed) calculated PV power.
     _energy(
         "pv_calculated_daily_energy",
-        lambda d, _, battery: pv_power_calculated(d.status, d.mode, d.grid_power, battery),
+        lambda d, own, battery: pv_power_calculated(d.status, d.mode, d.grid_power, own, battery),
         uses_battery_sensor=True,
     ),
 )
@@ -871,7 +869,7 @@ class VoltronicBalanceSensor(_ExternalBatteryMixin, VoltronicSmoothedSensor):
         if not usable:
             return None  # skip the sample rather than mix in the inverter's currents
         return self.entity_description.balance_fn(
-            self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption, battery
+            self.coordinator.data, self.coordinator.config_entry.runtime_data.own_consumption, battery
         )
 
 
@@ -993,7 +991,7 @@ class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, Restore
         power = None  # breaks the interval: nothing is integrated across it
         if usable or not description.uses_battery_sensor:
             power = description.power_fn(
-                self.coordinator.data, self.coordinator.config_entry.runtime_data.self_consumption, battery
+                self.coordinator.data, self.coordinator.config_entry.runtime_data.own_consumption, battery
             )
         return self._energy.add(dt_util.now().date(), time.monotonic(), power)
 

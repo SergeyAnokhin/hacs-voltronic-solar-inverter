@@ -620,14 +620,17 @@
       }
     },
     "number": {
-      "self_consumption_battery_mode": {
-        "name": "Self-consumption (battery mode)"
+      "own_consumption_battery_mode": {
+        "name": "Own consumption (battery mode)"
       },
-      "self_consumption_line_mode": {
-        "name": "Self-consumption (line mode)"
+      "own_consumption_line_mode": {
+        "name": "Own consumption (line mode)"
       },
-      "self_consumption_output_off": {
-        "name": "Self-consumption (output off)"
+      "own_consumption_standby": {
+        "name": "Own consumption (output off, standby)"
+      },
+      "own_consumption_solar_charging": {
+        "name": "Own consumption (output off, solar charging)"
       },
       "max_charging_current": {
         "name": "Max charging current"
