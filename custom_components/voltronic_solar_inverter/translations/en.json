@@ -38,7 +38,7 @@
         "data_description": {
           "fast_scan_interval": "How often live values are read (QPIGS, QMOD).",
           "slow_scan_interval": "How often settings, option flags and warnings are read (QPIRI, QFLAG, QPIWS).",
-          "battery_power_sensor": "An external battery meter such as a BMS, in W or kW, positive while charging. When set, PV power calculated uses it instead of the inverter's battery currents, which cannot show weak PV power."
+          "battery_power_sensor": "An external battery meter such as a BMS, in W or kW, positive while charging. When set, PV power full uses it instead of the inverter's battery currents, which cannot show weak PV power."
         }
       }
     }
@@ -111,8 +111,8 @@
       "pv_power_max_10min": {
         "name": "PV power max (10 min)"
       },
-      "pv_power_calculated": {
-        "name": "PV power calculated"
+      "pv_power_full": {
+        "name": "PV power full"
       },
       "inverter_losses": {
         "name": "Inverter losses"
@@ -129,8 +129,8 @@
       "balance_daily_energy": {
         "name": "Balance daily energy"
       },
-      "pv_calculated_daily_energy": {
-        "name": "PV calculated daily energy"
+      "pv_full_daily_energy": {
+        "name": "PV full daily energy"
       },
       "pv_power_max_today": {
         "name": "PV power max today",

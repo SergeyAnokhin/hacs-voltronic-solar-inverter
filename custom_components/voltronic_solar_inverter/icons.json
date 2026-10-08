@@ -70,7 +70,7 @@
       "pv_power": {
         "default": "mdi:solar-power-variant-outline"
       },
-      "pv_power_calculated": {
+      "pv_power_full": {
         "default": "mdi:solar-power-variant"
       },
       "inverter_losses": {
@@ -88,7 +88,7 @@
       "balance_daily_energy": {
         "default": "mdi:scale-balance"
       },
-      "pv_calculated_daily_energy": {
+      "pv_full_daily_energy": {
         "default": "mdi:solar-power-variant"
       },
       "pv_power_median_10min": {

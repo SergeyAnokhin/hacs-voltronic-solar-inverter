@@ -122,7 +122,7 @@ def inverter():
         yield inv
 
 
-def make_entry(minor_version: int = 2) -> MockConfigEntry:
+def make_entry(minor_version: int = 3) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         version=1,
@@ -626,7 +626,7 @@ async def test_migration_from_1_1(hass: HomeAssistant, inverter: Inverter) -> No
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     # Renamed in place (same registry entry, so the recorder keeps its history).
     assert registry.async_get(old_pv.entity_id) is None
     new_pv = registry.async_get(f"sensor.{PREFIX}_pv_power")  # the smoothed, recorded one
@@ -639,6 +639,36 @@ async def test_migration_from_1_1(hass: HomeAssistant, inverter: Inverter) -> No
     )
     # A choice the user made is kept.
     assert registry.async_get(serial.entity_id).hidden_by is er.RegistryEntryHider.USER
+
+
+async def test_migration_from_1_2_renames_the_calculated_pv_sensors(
+    hass: HomeAssistant, inverter: Inverter
+) -> None:
+    entry = make_entry(minor_version=2)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    power = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{SERIAL}_pv_power_calculated",
+        config_entry=entry,
+        suggested_object_id=f"{PREFIX}_pv_power_calculated",
+    )
+    energy = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{SERIAL}_pv_calculated_daily_energy",
+        config_entry=entry,
+        suggested_object_id=f"{PREFIX}_pv_calculated_daily_energy",
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.minor_version == 3
+    for old, key in ((power, "pv_power_full"), (energy, "pv_full_daily_energy")):
+        new = registry.async_get(f"sensor.{PREFIX}_{key}")
+        assert new.id == old.id  # same registry entry: the history stays
+        assert new.unique_id == f"{SERIAL}_{key}"
 
 
 # --- diagnostics -----------------------------------------------------------------------
@@ -665,7 +695,16 @@ async def test_own_consumption_and_balance_sensors(hass: HomeAssistant, inverter
     assert hass.states.get(f"number.{PREFIX}_own_consumption_output_off_solar_charging").state == "34.0"
     assert hass.states.get(f"sensor.{PREFIX}_inverter_losses").state == "60"  # 59.5 W, whole watts
     # 317 W load + 48 W + 3.5 % own - 376.5 W from the battery - 3 W unseen from the grid
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "0"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_full").state == "0"
+    full = hass.states.get(f"sensor.{PREFIX}_pv_power_full").attributes
+    assert full["formula"] == "max(0, load + own + battery_power - real_grid)"
+    assert full["load"] == 317
+    assert full["battery_power"] == -376.5
+    assert full["formula_values"].startswith("max(0, 317 + 59.1 + (-376.5) - 3)")
+    assert "state_note" in full
+    battery = hass.states.get(f"sensor.{PREFIX}_battery_power").attributes
+    assert battery["formula_values"] == "25.1 * (0 - 15) = -376.5"
+    assert battery["battery_voltage"] == 25.1
 
     await hass.services.async_call(
         "number", "set_value", {"entity_id": battery_id, "value": 100}, blocking=True
@@ -686,7 +725,7 @@ async def test_old_self_consumption_numbers_are_removed(hass: HomeAssistant, inv
     assert registry.async_get(old.entity_id) is None
 
 
-async def test_pv_power_calculated_with_external_battery_sensor(
+async def test_pv_power_full_with_external_battery_sensor(
     hass: HomeAssistant, inverter: Inverter
 ) -> None:
     inverter.table["QPIGS"] = answered("snapshot_B_night_load_300w.json")["QPIGS"]  # 317 W load
@@ -701,17 +740,17 @@ async def test_pv_power_calculated_with_external_battery_sensor(
     await hass.async_block_till_done()
     assert entry.options["battery_power_sensor"] == "sensor.bms_power"
     # 317 + 48 + 3.5 % - 300 W from the BMS - 3 W unseen grid draw = 73 W of PV the inverter does not show.
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "73"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_full").state == "73"
     # An unusable BMS state skips the sample instead of falling back to the inverter.
     hass.states.async_set("sensor.bms_power", "unavailable")
     await entry.runtime_data.fast.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get(f"sensor.{PREFIX}_pv_power_calculated").state == "73"
+    assert hass.states.get(f"sensor.{PREFIX}_pv_power_full").state == "73"
 
 
 async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> None:
     entry = await setup(hass)
-    for key in ("load", "grid", "battery", "balance", "pv_calculated"):
+    for key in ("load", "grid", "battery", "balance", "pv_full"):
         state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
         assert state.state == "0.0", key  # first sample: nothing integrated yet
         assert state.attributes["unit_of_measurement"] == "kWh"
@@ -720,7 +759,7 @@ async def test_daily_energy_sensors(hass: HomeAssistant, inverter: Inverter) -> 
         state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
         assert state.attributes["state_class"] == "total"
         assert dt_util.parse_datetime(state.attributes["last_reset"]) == dt_util.start_of_local_day()
-    for key in ("load", "pv_calculated"):
+    for key in ("load", "pv_full"):
         state = hass.states.get(f"sensor.{PREFIX}_{key}_daily_energy")
         assert state.attributes["state_class"] == "total_increasing", key
 

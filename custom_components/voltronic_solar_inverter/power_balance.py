@@ -14,10 +14,56 @@ Grid power comes from HGRID (+ = import, verified in mode L).
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+import re
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # no runtime import: tests load this file on its own
     from .protocol.parsers import GeneralStatus
+
+
+def fmt(value: Any) -> str:
+    """Compact number (1 decimal at most, no trailing zeros); anything else as text."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    text = f"{value:.1f}".rstrip("0").rstrip(".")
+    return "0" if text in ("-0", "") else text
+
+
+@dataclass(frozen=True)
+class Breakdown:
+    """A derived value that explains itself: ``value`` = ``formula`` evaluated with ``terms``.
+
+    Shown as state attributes: the formula, one attribute per term, one
+    ``<term>_formula`` per term that is composite itself (``notes``) and the
+    formula with the values filled in. The value is built from the same terms
+    in the same function, so the explanation and the state cannot drift apart.
+    """
+
+    formula: str
+    terms: dict[str, Any]
+    value: float | None
+    notes: dict[str, str] = field(default_factory=dict)
+
+    def filled(self) -> str:
+        """The formula with every term replaced by its value, followed by ``= result``."""
+        names = sorted(self.terms, key=len, reverse=True)
+        pattern = re.compile(r"\b(" + "|".join(re.escape(n) for n in names) + r")\b")
+
+        def replace(match: re.Match[str]) -> str:
+            text = fmt(self.terms[match.group(1)])
+            return f"({text})" if text.startswith("-") else text
+
+        return f"{pattern.sub(replace, self.formula)} = {fmt(self.value)}"
+
+    def attributes(self) -> dict[str, Any]:
+        attributes: dict[str, Any] = {"formula": self.formula}
+        attributes.update(
+            {name: round(v, 1) if isinstance(v, float) else v for name, v in self.terms.items()}
+        )
+        attributes.update({f"{name}_formula": text for name, text in self.notes.items()})
+        attributes["formula_values"] = self.filled()
+        return attributes
 
 # Modes in which the grid may supply power; without HGRID the balance is unknown there.
 _GRID_MODES = frozenset({"line"})
@@ -72,18 +118,48 @@ def own_consumption(status: GeneralStatus, mode: str | None, settings: Mapping[s
 
 def _real_grid(
     status: GeneralStatus, mode: str | None, grid_power: int | None, settings: Mapping[str, float]
-) -> float | None:
-    """Grid import (W) including the own consumption HGRID does not report."""
+) -> tuple[float, str] | None:
+    """(grid import in W including the own consumption HGRID does not report, how it was
+    put together); None while the balance is unknown."""
     grid = _grid(grid_power, mode)
     if grid is None:
         return None
     if status.grid_voltage <= 0:
-        return grid  # no grid: the inverter lives on battery / PV, which the balance sees
+        # no grid: the inverter lives on battery / PV, which the balance sees
+        return grid, f"grid_power (no grid voltage, nothing unseen) = {fmt(grid)}"
     key = own_consumption_key(status, mode)
-    return max(0.0, grid) + (settings[key] if key == STANDBY else _GRID_UNSEEN_W[key])
+    unseen = settings[key] if key == STANDBY else _GRID_UNSEEN_W[key]
+    what = "own consumption setting (standby)" if key == STANDBY else f"built-in unseen part ({key})"
+    return (
+        max(0.0, grid) + unseen,
+        f"max(0, grid_power) + {what} = max(0, {fmt(grid)}) + {fmt(unseen)}",
+    )
 
 
-def inverter_losses(status: GeneralStatus, mode: str | None, grid_power: int | None) -> float | None:
+def _battery_charge_power(status: GeneralStatus) -> tuple[float, str]:
+    battery = status.battery_voltage * (status.battery_charge_current - status.battery_discharge_current)
+    return battery, (
+        "battery_voltage * (battery_charge_current - battery_discharge_current) = "
+        f"{fmt(status.battery_voltage)} * ({status.battery_charge_current} - {status.battery_discharge_current})"
+    )
+
+
+def battery_power_breakdown(status: GeneralStatus) -> Breakdown:
+    """Signed battery power (W): positive = charging."""
+    return Breakdown(
+        "battery_voltage * (battery_charge_current - battery_discharge_current)",
+        {
+            "battery_voltage": status.battery_voltage,
+            "battery_charge_current": status.battery_charge_current,
+            "battery_discharge_current": status.battery_discharge_current,
+        },
+        status.battery_power,
+    )
+
+
+def inverter_losses_breakdown(
+    status: GeneralStatus, mode: str | None, grid_power: int | None
+) -> Breakdown | None:
     """Inputs minus outputs, using the PV power the inverter reports (QPIGS[19]).
 
     At night (no PV) this is the inverter's own consumption plus conversion losses.
@@ -93,12 +169,31 @@ def inverter_losses(status: GeneralStatus, mode: str | None, grid_power: int | N
         return None
     battery = status.battery_voltage * (status.battery_discharge_current - status.battery_charge_current)
     pv = status.pv_charging_power or 0
-    return round(pv + battery + grid - status.ac_output_active_power, 1)
+    load = status.ac_output_active_power
+    notes = {
+        "battery_discharge_power": (
+            "battery_voltage * (battery_discharge_current - battery_charge_current) = "
+            f"{fmt(status.battery_voltage)} * ({status.battery_discharge_current} - {status.battery_charge_current})"
+        )
+    }
+    if grid_power is None:
+        notes["grid_power"] = "HGRID not read, counted as 0"
+    return Breakdown(
+        "pv_power + battery_discharge_power + grid_power - load",
+        {"pv_power": pv, "battery_discharge_power": battery, "grid_power": grid, "load": load},
+        round(pv + battery + grid - load, 1),
+        notes,
+    )
 
 
-def net_generation(
+def inverter_losses(status: GeneralStatus, mode: str | None, grid_power: int | None) -> float | None:
+    breakdown = inverter_losses_breakdown(status, mode, grid_power)
+    return None if breakdown is None else breakdown.value
+
+
+def net_generation_breakdown(
     status: GeneralStatus, mode: str | None, grid_power: int | None, settings: Mapping[str, float]
-) -> float | None:
+) -> Breakdown | None:
     """What the system gave beyond the grid (W) = PV minus the own consumption:
     load + battery charge - discharge - real grid import.
 
@@ -107,33 +202,72 @@ def net_generation(
     """
     if grid_power is None:
         return None
-    grid = _real_grid(status, mode, grid_power, settings)
-    battery = status.battery_voltage * (status.battery_charge_current - status.battery_discharge_current)
-    return round(status.ac_output_active_power + battery - grid, 1)
+    grid, grid_note = _real_grid(status, mode, grid_power, settings)
+    battery, battery_note = _battery_charge_power(status)
+    load = status.ac_output_active_power
+    return Breakdown(
+        "load + battery_power - real_grid",
+        {"load": load, "battery_power": battery, "real_grid": grid},
+        round(load + battery - grid, 1),
+        {"battery_power": battery_note, "real_grid": grid_note},
+    )
 
 
-def pv_power_calculated(
+def net_generation(
+    status: GeneralStatus, mode: str | None, grid_power: int | None, settings: Mapping[str, float]
+) -> float | None:
+    breakdown = net_generation_breakdown(status, mode, grid_power, settings)
+    return None if breakdown is None else breakdown.value
+
+
+def pv_power_full_breakdown(
     status: GeneralStatus,
     mode: str | None,
     grid_power: int | None,
     settings: Mapping[str, float],
     battery_power: float | None = None,
-) -> float | None:
-    """PV power implied by the balance (>= 0):
-    load + own consumption + battery charge - discharge - real grid import.
+) -> Breakdown | None:
+    """The full PV power implied by the balance (>= 0), including the part the inverter's
+    own PV reading misses: load + own consumption + battery charge - discharge - real grid import.
 
     ``battery_power`` (W, + = charging) comes from an external battery meter (BMS);
     without it the inverter's battery currents are used. In daylight those show
     the inverter stage's own DC draw instead of the battery current, so weak PV
     (up to ~90 W on the test unit) only becomes visible with an external meter.
     """
-    grid = _real_grid(status, mode, grid_power, settings)
-    if grid is None:
+    real_grid = _real_grid(status, mode, grid_power, settings)
+    if real_grid is None:
         return None
+    grid, grid_note = real_grid
     if battery_power is None:
-        battery_power = status.battery_voltage * (
-            status.battery_charge_current - status.battery_discharge_current
-        )
+        battery_power, battery_note = _battery_charge_power(status)
+    else:
+        battery_note = "external battery power sensor"
     load = status.ac_output_active_power
+    key = own_consumption_key(status, mode)
+    fraction = LOAD_FRACTION.get(key, 0.0)
     own = own_consumption(status, mode, settings)
-    return round(max(0.0, load + own + battery_power - grid), 1)
+    return Breakdown(
+        "max(0, load + own + battery_power - real_grid)",
+        {"load": load, "own": own, "battery_power": battery_power, "real_grid": grid},
+        round(max(0.0, load + own + battery_power - grid), 1),
+        {
+            "own": (
+                f"own consumption setting ({key}) + load fraction * load = "
+                f"{fmt(settings[key])} + {fraction} * {fmt(load)}"
+            ),
+            "battery_power": battery_note,
+            "real_grid": grid_note,
+        },
+    )
+
+
+def pv_power_full(
+    status: GeneralStatus,
+    mode: str | None,
+    grid_power: int | None,
+    settings: Mapping[str, float],
+    battery_power: float | None = None,
+) -> float | None:
+    breakdown = pv_power_full_breakdown(status, mode, grid_power, settings, battery_power)
+    return None if breakdown is None else breakdown.value

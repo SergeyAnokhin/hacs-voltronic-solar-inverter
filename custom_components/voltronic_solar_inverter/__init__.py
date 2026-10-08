@@ -71,14 +71,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) ->
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) -> bool:
-    """1.1 -> 1.2: rename keys (keeping history), hide static and disable equalization entities.
+    """1.1 -> 1.3: rename keys (keeping history), hide static and disable equalization entities.
 
     Registry defaults only apply to new entities, so existing ones are updated
     here once. Entities the user already hid or disabled are left alone.
+    1.2 -> 1.3 only renames (the calculated PV sensors became "full").
     """
     if entry.version > 1:
         return False
-    if entry.minor_version < 2:
+    if entry.minor_version < 3:
         registry = er.async_get(hass)
         prefix = f"{entry.unique_id}_"
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
@@ -91,14 +92,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: VoltronicConfigEntry) 
                 new_entity_id = entity.entity_id.removesuffix(key) + new_key
                 if entity.entity_id.endswith(key) and registry.async_get(new_entity_id) is None:
                     changes["new_entity_id"] = new_entity_id
-            if key in HIDDEN_KEYS and entity.hidden_by is None:
-                changes["hidden_by"] = er.RegistryEntryHider.INTEGRATION
-            if key in DISABLED_KEYS and entity.disabled_by is None:
-                changes["disabled_by"] = er.RegistryEntryDisabler.INTEGRATION
+            if entry.minor_version < 2:
+                if key in HIDDEN_KEYS and entity.hidden_by is None:
+                    changes["hidden_by"] = er.RegistryEntryHider.INTEGRATION
+                if key in DISABLED_KEYS and entity.disabled_by is None:
+                    changes["disabled_by"] = er.RegistryEntryDisabler.INTEGRATION
             if changes:
                 registry.async_update_entity(entity.entity_id, **changes)
-        hass.config_entries.async_update_entry(entry, minor_version=2)
-        LOGGER.debug("Migrated config entry %s to version 1.2", entry.entry_id)
+        hass.config_entries.async_update_entry(entry, minor_version=3)
+        LOGGER.debug("Migrated config entry %s to version 1.3", entry.entry_id)
     return True
 
 

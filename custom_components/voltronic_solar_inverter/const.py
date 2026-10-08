@@ -64,9 +64,14 @@ DISABLED_KEYS: Final = frozenset(
         "equalization_active",
     }
 )
-# Entity keys renamed in config entry minor version 2 (old -> new); history is kept.
-# The old PV power sensor becomes the smoothed, recorded one.
-RENAMED_KEYS: Final = {"pv_charging_power": "pv_power"}
+# Entity keys renamed in config entry minor versions 2 and 3 (old -> new); history is kept.
+# The old PV power sensor becomes the smoothed, recorded one; the calculated PV
+# sensors are "full" (0.4.11).
+RENAMED_KEYS: Final = {
+    "pv_charging_power": "pv_power",
+    "pv_power_calculated": "pv_power_full",
+    "pv_calculated_daily_energy": "pv_full_daily_energy",
+}
 # Sensor keys no longer created; their registry entries are deleted at setup.
 REMOVED_KEYS: Final = frozenset({"pv_power_median_today"})  # removed in 0.4.6
 

@@ -59,7 +59,13 @@ from .coordinator import (
     VoltronicRuntimeData,
 )
 from .entity import VoltronicEntity, is_supported, remove_entities
-from .power_balance import inverter_losses, net_generation, pv_power_calculated
+from .power_balance import (
+    Breakdown,
+    battery_power_breakdown,
+    inverter_losses_breakdown,
+    net_generation_breakdown,
+    pv_power_full_breakdown,
+)
 from .protocol.h_parsers import SOLAR_SUPPLY_PRIORITIES, Schedule
 from .smoothing import DailyEnergy, DailyMax, SmoothedValue
 from .protocol.parsers import (
@@ -87,6 +93,10 @@ class VoltronicFastSensorDescription(SensorEntityDescription):
     smoothing_statistic: str = "mean"  # "mean", "median" or "max"
     smoothing_relative_threshold: float = SMOOTHING_RELATIVE_THRESHOLD
     smoothing_absolute_threshold: float = SMOOTHING_ABSOLUTE_THRESHOLD_W
+    # Derived values: formula, value of every term and the filled-in formula as attributes.
+    # (data, self-consumption settings, external battery power in W or None)
+    explain_fn: Callable[[FastData, Mapping[str, float], float | None], Breakdown | None] | None = None
+    uses_battery_sensor: bool = False  # the explanation needs the configured battery sensor
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,6 +111,7 @@ class VoltronicBalanceSensorDescription(VoltronicFastSensorDescription):
 class VoltronicSlowSensorDescription(SensorEntityDescription):
     value_fn: Callable[[SlowData], StateType | datetime]
     code_fn: Callable[[SlowData], Any] | None = None  # raw code shown as attribute for enums
+    explain_fn: Callable[[SlowData], Breakdown | None] | None = None  # derived value: see above
     requires: str | None = None  # SlowData field that must have been read
     precision: int | None = None  # decimals of the state itself (rounded before it is recorded)
 
@@ -215,7 +226,13 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     VoltronicFastSensorDescription(
         **_current("battery_discharge_current", lambda d: d.status.battery_discharge_current)
     ),
-    VoltronicFastSensorDescription(**_power("battery_power", lambda d: d.status.battery_power)),
+    VoltronicFastSensorDescription(
+        **_power(
+            "battery_power",
+            lambda d: d.status.battery_power,
+            explain_fn=lambda d, _, __: battery_power_breakdown(d.status),
+        )
+    ),
     VoltronicFastSensorDescription(
         # Voltage-based estimate from the inverter, NOT a state of charge: no
         # battery device class, disabled by default.
@@ -419,6 +436,21 @@ def _extra(key: str, value_fn, requires: str, enabled: bool = True, **kwargs):
     )
 
 
+def _clock_offset_breakdown(d: SlowData) -> Breakdown | None:
+    offset = d.clock_offset
+    if offset is None:
+        return None
+    clock = d.generation.clock.replace(tzinfo=dt_util.get_default_time_zone())
+    return Breakdown(
+        "round((inverter_clock - ha_time) in minutes)",
+        {
+            "inverter_clock": clock.replace(microsecond=0).isoformat(),
+            "ha_time": d.fetched_at.replace(microsecond=0).isoformat(),
+        },
+        offset,
+    )
+
+
 _MINUTES = {"device_class": SensorDeviceClass.DURATION, "native_unit_of_measurement": UnitOfTime.MINUTES}
 _PERCENT = {"native_unit_of_measurement": PERCENTAGE}
 
@@ -441,6 +473,7 @@ EXTRA_SLOW_SENSORS: tuple[VoltronicSlowSensorDescription, ...] = (
         lambda d: d.clock_offset,
         "generation",
         state_class=SensorStateClass.MEASUREMENT,
+        explain_fn=_clock_offset_breakdown,
         **_MINUTES,
     ),
     # Schedules (HEEP2): P48/P49 AC output, P46/P47 AC charger
@@ -585,21 +618,31 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
 
 # Power balance (power_balance.py): single samples jump by ~25 W because the
 # battery currents are whole amperes. Losses: mean of the last 10 minutes; the
-# calculated PV power: same 60 s mean as PV power, so the two can be compared.
-def _balance(key: str, balance_fn, window: float = MEDIAN_WINDOW) -> VoltronicBalanceSensorDescription:
+# full PV power: same 60 s mean as PV power, so the two can be compared.
+def _value(breakdown: Breakdown | None) -> float | None:
+    return None if breakdown is None else breakdown.value
+
+
+def _balance(
+    key: str, explain_fn, window: float = MEDIAN_WINDOW, uses_battery_sensor: bool = False
+) -> VoltronicBalanceSensorDescription:
     return VoltronicBalanceSensorDescription(
         # value_fn is unused: VoltronicBalanceSensor samples balance_fn
         **_power(key, lambda d: None, smoothing_window=window),
-        balance_fn=balance_fn,
+        # the state is built from the same breakdown that is shown as attributes
+        balance_fn=lambda d, own, battery: _value(explain_fn(d, own, battery)),
+        explain_fn=explain_fn,
+        uses_battery_sensor=uses_battery_sensor,
     )
 
 
 BALANCE_SENSORS: tuple[VoltronicBalanceSensorDescription, ...] = (
-    _balance("inverter_losses", lambda d, _, __: inverter_losses(d.status, d.mode, d.grid_power)),
+    _balance("inverter_losses", lambda d, _, __: inverter_losses_breakdown(d.status, d.mode, d.grid_power)),
     _balance(
-        "pv_power_calculated",
-        lambda d, own, battery: pv_power_calculated(d.status, d.mode, d.grid_power, own, battery),
+        "pv_power_full",
+        lambda d, own, battery: pv_power_full_breakdown(d.status, d.mode, d.grid_power, own, battery),
         SMOOTHING_WINDOW,
+        uses_battery_sensor=True,
     ),
 )
 
@@ -629,17 +672,25 @@ class VoltronicEnergySensorDescription(VoltronicFastSensorDescription):
 
     # (data, self-consumption settings, external battery power in W or None)
     power_fn: Callable[[FastData, Mapping[str, float], float | None], float | None]
-    uses_battery_sensor: bool = False  # skip samples while the configured battery sensor is unusable
 
 
-def _grid_import(d: FastData) -> float | None:
+def _grid_import_breakdown(d: FastData) -> Breakdown | None:
     """Grid power drawn (W); export, if any, counts as 0."""
-    return None if d.grid_power is None else max(0.0, float(d.grid_power))
+    if d.grid_power is None:
+        return None
+    grid = float(d.grid_power)
+    return Breakdown("max(0, grid_power)", {"grid_power": grid}, max(0.0, grid))
 
 
 def _energy(
-    key: str, power_fn, state_class=SensorStateClass.TOTAL_INCREASING, **kwargs
+    key: str,
+    power_fn=None,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    explain_fn=None,
+    **kwargs,
 ) -> VoltronicEnergySensorDescription:
+    if explain_fn is not None:  # the integrated power is the result of the explained formula
+        power_fn = lambda d, own, battery: _value(explain_fn(d, own, battery))  # noqa: E731
     return VoltronicEnergySensorDescription(
         key=key,
         translation_key=key,
@@ -649,6 +700,7 @@ def _energy(
         suggested_display_precision=2,
         value_fn=lambda d: None,  # unused: VoltronicDailyEnergySensor samples power_fn
         power_fn=power_fn,
+        explain_fn=explain_fn,
         **kwargs,
     )
 
@@ -656,23 +708,29 @@ def _energy(
 # Signed ones can go negative: a total with last_reset (local midnight), not total_increasing.
 DAILY_ENERGY_SENSORS: tuple[VoltronicEnergySensorDescription, ...] = (
     _energy("load_daily_energy", lambda d, _, __: d.status.ac_output_active_power),
-    _energy("grid_daily_energy", lambda d, _, __: _grid_import(d), requires="grid_power"),
+    _energy(
+        "grid_daily_energy",
+        explain_fn=lambda d, _, __: _grid_import_breakdown(d),
+        requires="grid_power",
+    ),
     # + = charged, - = discharged (whole-ampere currents: rough)
     _energy(
         "battery_daily_energy",
-        lambda d, _, __: d.status.battery_power,
+        explain_fn=lambda d, _, __: battery_power_breakdown(d.status),
         state_class=SensorStateClass.TOTAL,
     ),
     _energy(
         "balance_daily_energy",
-        lambda d, own, _: net_generation(d.status, d.mode, d.grid_power, own),
+        explain_fn=lambda d, own, _: net_generation_breakdown(d.status, d.mode, d.grid_power, own),
         requires="grid_power",
         state_class=SensorStateClass.TOTAL,
     ),
-    # The real PV energy: integral of the (unsmoothed) calculated PV power.
+    # The real PV energy: integral of the (unsmoothed) full PV power.
     _energy(
-        "pv_calculated_daily_energy",
-        lambda d, own, battery: pv_power_calculated(d.status, d.mode, d.grid_power, own, battery),
+        "pv_full_daily_energy",
+        explain_fn=lambda d, own, battery: pv_power_full_breakdown(
+            d.status, d.mode, d.grid_power, own, battery
+        ),
         uses_battery_sensor=True,
     ),
 )
@@ -785,7 +843,48 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class VoltronicFastSensor(VoltronicEntity, SensorEntity):
+class _ExternalBatteryMixin:
+    """Reads the optional external battery power sensor (options) and explains derived values."""
+
+    hass: HomeAssistant
+    coordinator: VoltronicFastCoordinator
+    entity_description: VoltronicFastSensorDescription
+
+    def _external_battery(self) -> tuple[bool, float | None]:
+        """(usable, W). Not configured: (True, None) = use the inverter's currents."""
+        entity_id = self.coordinator.config_entry.options.get(CONF_BATTERY_POWER_SENSOR)
+        if not entity_id:
+            return True, None
+        if self.hass is None:
+            return False, None  # not added yet
+        value = _power_state(self.hass, entity_id)
+        return value is not None, value
+
+    def _state_note(self) -> str | None:
+        """How the state relates to the formula result shown in the attributes."""
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Formula, value of every term and the filled-in formula (latest sample)."""
+        explain_fn = self.entity_description.explain_fn
+        if explain_fn is None or self.coordinator.data is None:
+            return None
+        usable, battery = self._external_battery()
+        if not usable and self.entity_description.uses_battery_sensor:
+            return None  # the sample is skipped rather than mixed with the inverter's currents
+        breakdown = explain_fn(
+            self.coordinator.data, self.coordinator.config_entry.runtime_data.own_consumption, battery
+        )
+        if breakdown is None:
+            return None
+        attributes = breakdown.attributes()
+        if note := self._state_note():
+            attributes["state_note"] = note
+        return attributes
+
+
+class VoltronicFastSensor(_ExternalBatteryMixin, VoltronicEntity, SensorEntity):
     entity_description: VoltronicFastSensorDescription
 
     @property
@@ -836,28 +935,17 @@ class VoltronicSmoothedSensor(VoltronicEntity, SensorEntity):
             self.async_write_ha_state()
 
 
-class _ExternalBatteryMixin:
-    """Reads the optional external battery power sensor (options)."""
-
-    hass: HomeAssistant
-    coordinator: VoltronicFastCoordinator
-
-    def _external_battery(self) -> tuple[bool, float | None]:
-        """(usable, W). Not configured: (True, None) = use the inverter's currents."""
-        entity_id = self.coordinator.config_entry.options.get(CONF_BATTERY_POWER_SENSOR)
-        if not entity_id:
-            return True, None
-        if self.hass is None:
-            return False, None  # not added yet
-        value = _power_state(self.hass, entity_id)
-        return value is not None, value
-
-
 class VoltronicBalanceSensor(_ExternalBatteryMixin, VoltronicSmoothedSensor):
     """Smoothed power-balance value; reads the self-consumption numbers from runtime
     data and, if configured, the external battery power sensor."""
 
     entity_description: VoltronicBalanceSensorDescription
+
+    def _state_note(self) -> str:
+        return (
+            f"state = mean of the last {int(self.entity_description.smoothing_window)} s, "
+            "published on significant changes; the attributes show the latest sample"
+        )
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -957,6 +1045,14 @@ class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, Restore
 
     entity_description: VoltronicEnergySensorDescription
 
+    def _state_note(self) -> str | None:
+        if self.entity_description.explain_fn is None:
+            return None
+        return (
+            "state = kWh since local midnight, integrated from the result of the formula "
+            "on every poll; the attributes show the latest sample"
+        )
+
     def __init__(
         self, coordinator: VoltronicFastCoordinator, description: VoltronicEnergySensorDescription
     ) -> None:
@@ -1017,6 +1113,8 @@ class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, Restore
 
 class VoltronicSlowSensor(VoltronicEntity, SensorEntity):
     entity_description: VoltronicSlowSensorDescription
+    # Change every poll; keep them out of the recorder (the formula and the offset are enough).
+    _unrecorded_attributes = frozenset({"inverter_clock", "ha_time", "formula_values"})
 
     @property
     def native_value(self) -> StateType | datetime:
@@ -1028,6 +1126,10 @@ class VoltronicSlowSensor(VoltronicEntity, SensorEntity):
         attributes: dict[str, Any] = {ATTR_UPDATE_GROUP: UPDATE_GROUP_SLOW}
         if self.entity_description.code_fn is not None:
             attributes["code"] = self.entity_description.code_fn(self.coordinator.data)
+        if self.entity_description.explain_fn is not None and (
+            breakdown := self.entity_description.explain_fn(self.coordinator.data)
+        ):
+            attributes.update(breakdown.attributes())
         return attributes
 
 

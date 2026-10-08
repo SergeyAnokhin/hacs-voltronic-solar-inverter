@@ -65,7 +65,7 @@ class VoltronicConfigFlow(ConfigFlow, domain=DOMAIN):
     """Ask for the gateway address and verify the inverter answers."""
 
     VERSION = 1
-    MINOR_VERSION = 2  # 1.2: see async_migrate_entry
+    MINOR_VERSION = 3  # 1.3: see async_migrate_entry
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}

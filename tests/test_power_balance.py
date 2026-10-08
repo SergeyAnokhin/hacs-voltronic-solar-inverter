@@ -1,7 +1,8 @@
-"""Power balance: inverter losses and calculated PV power from recorded QPIGS samples."""
+"""Power balance: inverter losses and full PV power from recorded QPIGS samples."""
 
 import importlib.util
 from pathlib import Path
+import sys
 
 from conftest import answered
 from protocol.parsers import parse_qpigs
@@ -14,6 +15,7 @@ _PATH = (
 )
 _spec = importlib.util.spec_from_file_location("power_balance", _PATH)
 balance = importlib.util.module_from_spec(_spec)
+sys.modules["power_balance"] = balance  # dataclasses look their module up here
 _spec.loader.exec_module(balance)
 
 OWN = balance.DEFAULT_OWN_CONSUMPTION  # battery 48, line 47, standby 12, solar charging 34 W
@@ -36,7 +38,7 @@ def test_losses_at_night_battery_mode():
 
 def test_losses_unknown_in_line_mode_without_grid_power():
     assert balance.inverter_losses(AC_CHARGING, "line", None) is None
-    assert balance.pv_power_calculated(AC_CHARGING, "line", None, OWN) is None
+    assert balance.pv_power_full(AC_CHARGING, "line", None, OWN) is None
 
 
 def test_losses_with_grid_power():
@@ -59,45 +61,45 @@ def test_own_consumption_grows_with_the_load():
     assert balance.own_consumption(OFF, "standby", OWN) == 12
 
 
-def test_pv_power_calculated_from_inverter_currents():
+def test_pv_power_full_from_inverter_currents():
     # 317 W load + 59.1 W own - 376.5 W from the battery - 3 W unseen grid draw: ~0 at night.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN) == 0
+    assert balance.pv_power_full(LOAD, "battery", 0, OWN) == 0
     # Line mode, battery charging 2 A: load + own + charge - (HGRID + 17 W it does not show).
     s = AC_CHARGING
     charge = s.battery_voltage * s.battery_charge_current
     load = s.ac_output_active_power
     expected = round(load + 47 + 0.013 * load + charge - 400 - 17, 1)
-    assert balance.pv_power_calculated(s, "line", 400, OWN) == max(0.0, expected)
+    assert balance.pv_power_full(s, "line", 400, OWN) == max(0.0, expected)
 
 
-def test_pv_power_calculated_from_external_battery():
+def test_pv_power_full_from_external_battery():
     # BMS says only 300 W leave the battery: ~73 W must come from PV.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, -300) == 73.1
+    assert balance.pv_power_full(LOAD, "battery", 0, OWN, -300) == 73.1
     # Charging 200 W while feeding the load: PV covers both plus own consumption.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, 200) == 573.1
+    assert balance.pv_power_full(LOAD, "battery", 0, OWN, 200) == 573.1
     # Never negative.
-    assert balance.pv_power_calculated(LOAD, "battery", 0, OWN, -1000) == 0
+    assert balance.pv_power_full(LOAD, "battery", 0, OWN, -1000) == 0
 
 
-def test_pv_power_calculated_follows_the_settings():
+def test_pv_power_full_follows_the_settings():
     more = {**OWN, "battery": 63.0}
-    assert balance.pv_power_calculated(LOAD, "battery", 0, more, -300) == 88.1
+    assert balance.pv_power_full(LOAD, "battery", 0, more, -300) == 88.1
 
 
-def test_pv_power_calculated_without_grid():
+def test_pv_power_full_without_grid():
     # No grid: nothing is drawn unseen from it, the battery supplies all of the own use.
     load = GRID_OFF.ac_output_active_power
     out = GRID_OFF.battery_voltage * GRID_OFF.battery_discharge_current
     expected = max(0.0, round(load + 48 + 0.035 * load - out, 1))
-    assert balance.pv_power_calculated(GRID_OFF, "battery", 0, OWN) == expected
+    assert balance.pv_power_full(GRID_OFF, "battery", 0, OWN) == expected
 
 
-def test_pv_power_calculated_output_off():
+def test_pv_power_full_output_off():
     # Solar charging (mode C): 34 W own, 3 W of it from the grid unseen.
-    assert balance.pv_power_calculated(OFF, "charging", 0, OWN, 100) == 131
-    assert balance.pv_power_calculated(OFF, "charging", 0, OWN, -31) == 0  # dusk: battery feeds it
+    assert balance.pv_power_full(OFF, "charging", 0, OWN, 100) == 131
+    assert balance.pv_power_full(OFF, "charging", 0, OWN, -31) == 0  # dusk: battery feeds it
     # Standby: the inverter lives on the grid (12 W, HGRID shows 0), nothing from PV.
-    assert balance.pv_power_calculated(OFF, "standby", 0, OWN, 0) == 0
+    assert balance.pv_power_full(OFF, "standby", 0, OWN, 0) == 0
 
 
 def test_net_generation():
@@ -114,3 +116,33 @@ def test_net_generation():
     assert balance.net_generation(s, "line", 400, OWN) == round(
         s.ac_output_active_power + charge - 400 - 17, 1
     )
+
+
+def test_breakdown_explains_the_full_pv_power():
+    bd = balance.pv_power_full_breakdown(LOAD, "battery", 0, OWN, -300)
+    assert bd.value == 73.1
+    attributes = bd.attributes()
+    assert attributes["formula"] == "max(0, load + own + battery_power - real_grid)"
+    assert attributes["load"] == 317
+    assert attributes["own"] == 59.1
+    assert attributes["battery_power"] == -300
+    assert attributes["real_grid"] == 3
+    assert attributes["battery_power_formula"] == "external battery power sensor"
+    assert attributes["own_formula"].endswith("48 + 0.035 * 317")
+    assert attributes["real_grid_formula"].endswith("max(0, 0) + 3")
+    assert attributes["formula_values"] == "max(0, 317 + 59.1 + (-300) - 3) = 73.1"
+
+
+def test_breakdown_of_losses_and_net_generation_match_their_values():
+    losses = balance.inverter_losses_breakdown(LOAD, "battery", 0)
+    assert losses.value == balance.inverter_losses(LOAD, "battery", 0) == 59.5
+    assert losses.filled() == "0 + 376.5 + 0 - 317 = 59.5"
+    net = balance.net_generation_breakdown(LOAD, "battery", 0, OWN)
+    assert net.value == balance.net_generation(LOAD, "battery", 0, OWN)
+    assert net.formula == "load + battery_power - real_grid"
+    assert balance.net_generation_breakdown(LOAD, "battery", None, OWN) is None
+
+
+def test_breakdown_notes_a_missing_grid_reading():
+    bd = balance.inverter_losses_breakdown(LOAD, "battery", None)
+    assert bd.attributes()["grid_power_formula"] == "HGRID not read, counted as 0"

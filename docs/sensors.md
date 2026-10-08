@@ -41,6 +41,31 @@ What every sensor of the integration shows and, for the ones that are **not** a 
 | **`pv_power_median_10min`** | median of the `QPIGS[19]` samples of the last 10 min | Derived; filters out spikes |
 | **`pv_power_max_10min`** | maximum of the `QPIGS[19]` samples of the last 10 min | Derived |
 
+## Self-explaining derived values (since 0.4.11)
+
+Every sensor whose value is computed from other values says how, in its state attributes. The names are the same everywhere: `formula` (the rule, with the variable names), one attribute per variable with its **current value**, `<variable>_formula` for a variable that is itself composite (e.g. `own_formula`, `real_grid_formula`, `battery_power_formula`) and `formula_values` (the formula with the values filled in, ending in `= result`). Example for *PV power full*:
+
+```text
+formula:         max(0, load + own + battery_power - real_grid)
+load: 317   own: 59.1   battery_power: -300   real_grid: 3
+formula_values:  max(0, 317 + 59.1 + (-300) - 3) = 73.1
+```
+
+The attributes show the **latest sample**. The smoothed sensors (`inverter_losses`, `pv_power_full`) publish a mean over a window, so their state can differ from the `= result`; `state_note` says so. The daily energies integrate the result over the day (`state_note`). Code: `Breakdown` in [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py); the state is built from the same terms, so the explanation cannot drift from the value.
+
+| Sensor | `formula` |
+|---|---|
+| `battery_power` | `battery_voltage * (battery_charge_current - battery_discharge_current)` |
+| `inverter_losses` | `pv_power + battery_discharge_power + grid_power - load` |
+| `pv_power_full` | `max(0, load + own + battery_power - real_grid)` |
+| `pv_full_daily_energy` | same as `pv_power_full`, integrated |
+| `balance_daily_energy` | `load + battery_power - real_grid`, integrated |
+| `battery_daily_energy` | same as `battery_power`, integrated |
+| `grid_daily_energy` | `max(0, grid_power)`, integrated |
+| `inverter_clock_offset` | `round((inverter_clock - ha_time) in minutes)` (the two timestamps are not recorded) |
+
+Statistics (`pv_power_median_10min`, `pv_power_max_10min`, the `*_max_today` sensors, smoothed means) are not formulas and have no such attributes. Entities named *calculated* before 0.4.11 are now *full* (`pv_power_full`, `pv_full_daily_energy`); the registry entries are renamed in place (config entry 1.3), so history and entity ids follow.
+
 ## Smoothing and publishing rules
 
 Implemented by [`smoothing.SmoothedValue`](../custom_components/voltronic_solar_inverter/smoothing.py); constants in [`const.py`](../custom_components/voltronic_solar_inverter/const.py).
@@ -52,7 +77,7 @@ Implemented by [`smoothing.SmoothedValue`](../custom_components/voltronic_solar_
 
 ## Power balance sensors
 
-Fast, power (W), written with the smoothing rules above: `inverter_losses` is the mean of the last 10 min (single samples jump by ~25 W because of the whole-ampere battery currents), `pv_power_calculated` the mean of the last 60 s like `pv_power` (since 0.4.8), so the two can be compared. Code: [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py).
+Fast, power (W), written with the smoothing rules above: `inverter_losses` is the mean of the last 10 min (single samples jump by ~25 W because of the whole-ampere battery currents), `pv_power_full` the mean of the last 60 s like `pv_power` (since 0.4.8), so the two can be compared. Code: [`power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py).
 
 ```text
 PV + battery discharge + grid import = load + battery charge + own consumption
@@ -63,9 +88,9 @@ Definitions: *load* = `QPIGS[5]`; *battery* term = battery voltage × (I<sub>dis
 | Key | Formula | Notes |
 |---|---|---|
 | `inverter_losses` | `PV(QPIGS[19]) + battery + grid − load` | Inputs minus outputs: conversion losses plus the inverter's own consumption (at night with no PV, just that). Unknown (`None`) in mode L (line) without `HGRID`; in other modes a missing `HGRID` counts as 0 W |
-| `pv_power_calculated` | `max(0, load + own + battery_power − real grid)` | The PV power the balance implies. `own` = `power_balance.own_consumption` (the setting of the current state + the load-dependent part, below). `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. *Real grid* = `HGRID[6]` + the part of the own consumption `HGRID` does not report (below), only while the grid is present. Same `HGRID` rule as above. Clamped at 0 |
+| `pv_power_full` | `max(0, load + own + battery_power − real grid)` | The PV power the balance implies. `own` = `power_balance.own_consumption` (the setting of the current state + the load-dependent part, below). `battery_power` (+ = charging) comes from the optional external battery sensor (options; W or kW; an unusable state skips the sample), else from the inverter's currents (−*battery* term) — those cannot show weak PV in daylight. *Real grid* = `HGRID[6]` + the part of the own consumption `HGRID` does not report (below), only while the grid is present. Same `HGRID` rule as above. Clamped at 0 |
 
-**Own consumption** (since 0.4.9) = everything the inverter uses itself (control board, power stage, conversion losses), in W. Four HA-only number entities (never sent to the inverter, restored after a restart, 0–500 W) hold it **with no load**; the state is picked by `power_balance.own_consumption_key`. Used by `pv_power_calculated`, `pv_calculated_daily_energy` and `balance_daily_energy`.
+**Own consumption** (since 0.4.9) = everything the inverter uses itself (control board, power stage, conversion losses), in W. Four HA-only number entities (never sent to the inverter, restored after a restart, 0–500 W) hold it **with no load**; the state is picked by `power_balance.own_consumption_key`. Used by `pv_power_full`, `pv_full_daily_energy` and `balance_daily_energy`.
 
 | State (condition) | Setting | Default | + per W of load | Drawn from the grid without `HGRID` showing it (built in) |
 |---|---|---|---|---|
@@ -86,7 +111,7 @@ Fast, kWh, 2 decimals. Every raw fast sample of a power is integrated with the t
 | `grid_daily_energy` | grid import = `max(0, HGRID[6])` | `total_increasing` | Export, if any, counts as 0. Only with the H dialect |
 | `battery_daily_energy` | `battery_power` = V × (I<sub>chg</sub> − I<sub>dis</sub>) | `total` + `last_reset` = local midnight | + = charged, − = discharged; may be negative; rough (whole amperes) |
 | `balance_daily_energy` | `power_balance.net_generation` = load + battery(charge − discharge) − real grid import (`HGRID` + the unseen part of the own consumption, see above) | `total` + `last_reset` | = PV energy minus all losses; may be negative (night). Only with the H dialect |
-| `pv_calculated_daily_energy` | `power_balance.pv_power_calculated` (each raw sample, not the 60 s mean) | `total_increasing` | The real PV energy. Uses the external battery sensor when configured; while it is unusable the sample is `None`, which breaks the interval (nothing added) |
+| `pv_full_daily_energy` | `power_balance.pv_power_full` (each raw sample, not the 60 s mean) | `total_increasing` | The real PV energy. Uses the external battery sensor when configured; while it is unusable the sample is `None`, which breaks the interval (nothing added) |
 
 ## Daily maximum sensors
 
