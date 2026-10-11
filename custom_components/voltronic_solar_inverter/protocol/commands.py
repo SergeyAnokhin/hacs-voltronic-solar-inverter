@@ -77,6 +77,39 @@ def set_solar_supply_priority(code: int) -> WriteCommand:
     return WriteCommand(f"PVENGUSE{code:02d}")
 
 
+# PBATCD<abc> from the Axpert MAX protocol (PI30MAX): a = discharge off/on,
+# b = discharge off/on with standby kept, c = charge off/on; 000 clears the
+# overrides. No query reads it back. Codes that shut the unit down (011, 010)
+# are left out. Unverified on VMII firmware.
+BATTERY_CONTROL_MODES: Final = {
+    "auto": "000",
+    "no_discharge": "101",
+    "no_charge": "110",
+    "no_charge_no_discharge": "100",
+}
+
+
+def set_battery_control(mode: str) -> WriteCommand:
+    """PBATCD<abc>: battery charge / discharge override (mode from BATTERY_CONTROL_MODES)."""
+    code = BATTERY_CONTROL_MODES.get(mode) if isinstance(mode, str) else None
+    if code is None:
+        raise InvalidCommandError(f"unknown battery control mode {mode!r}")
+    return WriteCommand(f"PBATCD{code}")
+
+
+# PBATMAXDISC<nnn> from the Axpert MAX protocol: 000 = no limit, else 30..150 A
+# (documented for 48 V units only; no query reads it back on this firmware).
+MAX_DISCHARGING_CURRENT_RANGE: Final = (30, 150)
+
+
+def set_max_discharging_current(amps: int) -> WriteCommand:
+    """PBATMAXDISC<nnn>: 0 disables the limit, otherwise 30..150 A."""
+    low, high = MAX_DISCHARGING_CURRENT_RANGE
+    if isinstance(amps, bool) or not isinstance(amps, int) or not (amps == 0 or low <= amps <= high):
+        raise InvalidCommandError(f"max discharging current {amps!r} A is not 0 or {low}..{high} A")
+    return WriteCommand(f"PBATMAXDISC{amps:03d}")
+
+
 def _check_current(amps: int, options: Iterable[int], name: str) -> None:
     allowed = tuple(options)
     if isinstance(amps, bool) or not isinstance(amps, int) or amps not in allowed:

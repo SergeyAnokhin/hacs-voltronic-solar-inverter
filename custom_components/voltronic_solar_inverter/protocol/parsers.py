@@ -166,9 +166,9 @@ def parse_qmod(payload: str) -> str:
 # numbering (owner-confirmed values are listed in *_VERIFIED). Code 2 of the
 # output priority is "utility first" per the solarplug-esphome POP mapping.
 OUTPUT_SOURCE_PRIORITIES: Final = {0: "solar_first", 1: "sbu", 2: "utility_first"}
-OUTPUT_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({1})
+OUTPUT_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({0, 1})
 CHARGER_SOURCE_PRIORITIES: Final = {0: "solar_first", 1: "solar_and_utility", 2: "only_solar"}
-CHARGER_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({2})
+CHARGER_SOURCE_PRIORITIES_VERIFIED: Final = frozenset({0, 1, 2})
 BATTERY_TYPES: Final = {0: "agm", 1: "flooded", 2: "user_defined"}
 INPUT_VOLTAGE_RANGES: Final = {0: "appliance", 1: "ups"}
 MACHINE_TYPES: Final = {"00": "grid_tie", "01": "off_grid", "10": "hybrid"}

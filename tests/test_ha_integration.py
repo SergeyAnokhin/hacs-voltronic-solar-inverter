@@ -310,7 +310,7 @@ async def test_options_flow_changes_intervals(hass: HomeAssistant, inverter: Inv
     assert entry.runtime_data.fast.update_interval.total_seconds() == 2
     assert hass.states.get(f"switch.{PREFIX}_buzzer") is not None
     select = hass.states.get(f"select.{PREFIX}_output_source_priority")
-    assert select.attributes["options"] == ["sbu"]
+    assert select.attributes["options"] == ["solar_first", "sbu"]
     assert inverter.writes == []
 
 
@@ -358,6 +358,34 @@ async def test_select_sends_verified_code(hass: HomeAssistant, inverter: Inverte
             blocking=True,
         )
     assert inverter.writes == ["PCP02"]
+
+
+async def test_battery_overrides_show_last_acked_value(
+    hass: HomeAssistant, inverter: Inverter
+) -> None:
+    await setup(hass)
+    select_id = f"select.{PREFIX}_battery_charge_discharge_override"
+    number_id = f"number.{PREFIX}_max_discharging_current"
+    assert hass.states.get(select_id).state == "unknown"
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": select_id, "option": "no_discharge"}, blocking=True
+    )
+    assert hass.states.get(select_id).state == "no_discharge"
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": number_id, "value": 60}, blocking=True
+    )
+    assert hass.states.get(number_id).state == "60"
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": number_id, "value": 20}, blocking=True
+        )
+    inverter.write_answer = "NAK"
+    with pytest.raises(HomeAssistantError, match="rejected"):
+        await hass.services.async_call(
+            "select", "select_option", {"entity_id": select_id, "option": "auto"}, blocking=True
+        )
+    assert hass.states.get(select_id).state == "no_discharge"
+    assert inverter.writes == ["PBATCD101", "PBATMAXDISC060", "PBATCD000"]
 
 
 async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:

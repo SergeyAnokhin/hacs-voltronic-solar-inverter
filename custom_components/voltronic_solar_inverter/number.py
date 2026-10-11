@@ -1,4 +1,5 @@
-"""Numbers for charge currents and battery voltage thresholds, plus four
+"""Numbers for charge currents, the max discharge current (PBATMAXDISC, not
+readable: shows the last ACKed value) and battery voltage thresholds, plus four
 HA-only settings: the inverter's total own consumption (battery mode / line
 mode / standby / solar charging).
 
@@ -117,6 +118,7 @@ async def async_setup_entry(
     if data.slow.data.rated.battery_rating_voltage == 24.0:
         descriptions += [_voltage_description(key) for key in commands.VOLTAGE_SETTINGS_24V]
     async_add_entities(VoltronicNumber(data.slow, d) for d in descriptions)
+    async_add_entities([VoltronicDischargeCurrentNumber(data.slow, MAX_DISCHARGING_CURRENT)])
     # 0.4.5-0.4.8 stored only the part the inverter's sensors miss, under other keys;
     # drop them so the new settings start from the measured totals.
     remove_entities(hass, identity, "number", REMOVED_NUMBER_KEYS)
@@ -157,6 +159,20 @@ OWN_CONSUMPTION_NUMBERS: tuple[tuple[NumberEntityDescription, str], ...] = (
 )
 
 
+# PBATMAXDISC: 0 = no limit, 30..150 A (values 10 and 20 are rejected by the builder).
+MAX_DISCHARGING_CURRENT = NumberEntityDescription(
+    key="number_max_discharging_current",
+    translation_key="max_discharging_current",
+    entity_category=EntityCategory.CONFIG,
+    device_class=NumberDeviceClass.CURRENT,
+    native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+    native_min_value=0,
+    native_max_value=commands.MAX_DISCHARGING_CURRENT_RANGE[1],
+    native_step=10,
+    mode=NumberMode.BOX,
+)
+
+
 class VoltronicNumber(VoltronicControlEntity, NumberEntity):
     entity_description: VoltronicNumberDescription
 
@@ -166,6 +182,24 @@ class VoltronicNumber(VoltronicControlEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.async_send(lambda: self.entity_description.command_fn(value))
+
+
+class VoltronicDischargeCurrentNumber(VoltronicControlEntity, RestoreNumber):
+    """PBATMAXDISC; the value is the last ACKed one (no query reads it back)."""
+
+    _attr_assumed_state = True
+    _attr_native_value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last is not None:
+            self._attr_native_value = last.native_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.async_send(lambda: commands.set_max_discharging_current(_as_int(value)))
+        self._attr_native_value = value
+        self.async_write_ha_state()
 
 
 class VoltronicOwnConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], RestoreNumber):

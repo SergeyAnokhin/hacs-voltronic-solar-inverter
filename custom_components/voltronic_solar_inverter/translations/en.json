@@ -327,7 +327,7 @@
       "output_source_priority": {
         "name": "Output source priority",
         "state": {
-          "solar_first": "Solar first (SUB, unverified code)",
+          "solar_first": "SUB (solar → utility → battery)",
           "sbu": "SBU (solar → battery → utility)",
           "utility_first": "Utility first (unverified code)"
         },
@@ -602,13 +602,25 @@
       "output_source_priority": {
         "name": "Output source priority",
         "state": {
+          "solar_first": "SUB (solar → utility → battery)",
           "sbu": "SBU (solar → battery → utility)"
         }
       },
       "charger_source_priority": {
         "name": "Charger source priority",
         "state": {
+          "solar_first": "Solar first",
+          "solar_and_utility": "Solar and utility",
           "only_solar": "Only solar"
+        }
+      },
+      "battery_control": {
+        "name": "Battery charge / discharge override",
+        "state": {
+          "auto": "Auto (follow the settings)",
+          "no_discharge": "No discharge (standby kept)",
+          "no_charge": "No charging",
+          "no_charge_no_discharge": "No charging, no discharge"
         }
       },
       "solar_supply_priority": {
@@ -620,6 +632,9 @@
       }
     },
     "number": {
+      "max_discharging_current": {
+        "name": "Max discharging current"
+      },
       "own_consumption_battery_mode": {
         "name": "Own consumption (battery mode)"
       },

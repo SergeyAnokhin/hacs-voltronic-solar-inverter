@@ -52,10 +52,22 @@ def test_output_source_priority_sbu_frame():
     assert cmd.frame == bytes.fromhex("504f503031d2690d")
 
 
-@pytest.mark.parametrize("code", [0, 2, 3, -1, "1", None])
+def test_output_source_priority_sub_frame():
+    assert commands.set_output_source_priority(0).text == "POP00"
+
+
+@pytest.mark.parametrize("code", [2, 3, -1, "1", None])
 def test_output_source_priority_rejects_unverified(code):
     with pytest.raises(InvalidCommandError):
         commands.set_output_source_priority(code)
+
+
+def test_charger_source_priority_solar_first_frame():
+    assert commands.set_charger_source_priority(0).text == "PCP00"
+
+
+def test_charger_source_priority_solar_and_utility_frame():
+    assert commands.set_charger_source_priority(1).text == "PCP01"
 
 
 def test_charger_source_priority_only_solar_frame():
@@ -64,7 +76,7 @@ def test_charger_source_priority_only_solar_frame():
     assert cmd.frame == bytes.fromhex("50435030 32ad380d".replace(" ", ""))
 
 
-@pytest.mark.parametrize("code", [0, 1, 3, "2"])
+@pytest.mark.parametrize("code", [3, -1, "2"])
 def test_charger_source_priority_rejects_unverified(code):
     with pytest.raises(InvalidCommandError):
         commands.set_charger_source_priority(code)
@@ -172,3 +184,35 @@ def test_battery_voltage_range_edges():
 def test_battery_voltage_rejects(key, volts):
     with pytest.raises(InvalidCommandError):
         commands.set_battery_voltage(key, volts)
+
+
+@pytest.mark.parametrize(
+    ("mode", "text"),
+    [
+        ("auto", "PBATCD000"),
+        ("no_discharge", "PBATCD101"),
+        ("no_charge", "PBATCD110"),
+        ("no_charge_no_discharge", "PBATCD100"),
+    ],
+)
+def test_battery_control_frames(mode, text):
+    assert commands.set_battery_control(mode).text == text
+
+
+@pytest.mark.parametrize("mode", ["shutdown", "011", "010", None, 1])
+def test_battery_control_rejects_unknown(mode):
+    with pytest.raises(InvalidCommandError):
+        commands.set_battery_control(mode)
+
+
+@pytest.mark.parametrize(
+    ("amps", "text"), [(0, "PBATMAXDISC000"), (30, "PBATMAXDISC030"), (150, "PBATMAXDISC150")]
+)
+def test_max_discharging_current_frame(amps, text):
+    assert commands.set_max_discharging_current(amps).text == text
+
+
+@pytest.mark.parametrize("amps", [10, 29, 151, -1, True, 30.0, "30"])
+def test_max_discharging_current_rejects(amps):
+    with pytest.raises(InvalidCommandError):
+        commands.set_max_discharging_current(amps)

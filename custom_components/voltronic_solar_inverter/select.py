@@ -1,7 +1,9 @@
-"""Selects for output (POP), charger (PCP) and solar supply (PVENGUSE, P43) priority.
+"""Selects for output (POP), charger (PCP) and solar supply (PVENGUSE, P43) priority,
+and the battery charge / discharge override (PBATCD).
 
-Only owner-verified codes are offered (see *_VERIFIED in protocol/parsers.py);
-only set up when controls are enabled.
+Only owner-verified priority codes are offered (see *_VERIFIED in
+protocol/parsers.py). PBATCD cannot be read back: its select shows the last
+mode the inverter ACKed (restored after a restart).
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from homeassistant.components.select import SelectEntity, SelectEntityDescriptio
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .coordinator import VoltronicConfigEntry
 from .coordinator import SlowData
@@ -76,6 +79,15 @@ async def async_setup_entry(
     async_add_entities(
         VoltronicPrioritySelect(data.slow, d) for d in SELECTS if is_supported(d, data.identity)
     )
+    async_add_entities([VoltronicBatteryControlSelect(data.slow, BATTERY_CONTROL)])
+
+
+BATTERY_CONTROL = SelectEntityDescription(
+    key="select_battery_control",
+    translation_key="battery_control",
+    entity_category=EntityCategory.CONFIG,
+    options=list(commands.BATTERY_CONTROL_MODES),
+)
 
 
 class VoltronicPrioritySelect(VoltronicControlEntity, SelectEntity):
@@ -94,3 +106,21 @@ class VoltronicPrioritySelect(VoltronicControlEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         code = next(c for c, o in self.entity_description.codes.items() if o == option)
         await self.async_send(lambda: self.entity_description.command_fn(code))
+
+
+class VoltronicBatteryControlSelect(VoltronicControlEntity, SelectEntity, RestoreEntity):
+    """PBATCD override; the state is the last ACKed mode (no query reads it back)."""
+
+    _attr_assumed_state = True
+    _attr_current_option: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state in self.options:
+            self._attr_current_option = last.state
+
+    async def async_select_option(self, option: str) -> None:
+        await self.async_send(lambda: commands.set_battery_control(option))
+        self._attr_current_option = option
+        self.async_write_ha_state()

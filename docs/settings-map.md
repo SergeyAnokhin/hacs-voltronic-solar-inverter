@@ -8,7 +8,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 
 | P | Setting | Now | Read source | Conf. | Write command (owner to test) | Write source |
 |---|---|---|---|---|---|---|
-| 01 | Output source priority | SBU | `QPIRI[16]` (`1` = SBU, menu-position codes) | V (owner) | `POP<NN>`: `POP00` SUB / solar first, `POP01` SBU, `POP02` utility first | Ref (mapping best-guess there too); PI30 spec |
+| 01 | Output source priority | SUB (owner switched 2026-10-11 from SBU) | `QPIRI[16]` (`0` = SUB solar → utility → battery, `1` = SBU, menu-position codes) | V (owner, both codes) | `POP<NN>`: `POP00` SUB / solar first, `POP01` SBU, `POP02` utility first | Ref (mapping best-guess there too); PI30 spec |
 | 02 | Max total charge current | 50 A | `QPIRI[14]`, `HEEP1[1]` | **V** (50 → 40 A moved both; `QBEQI[3]` equalization max current follows P02) | `MNCHGC<nnn>` (Ref, ACK + readback) or PI30 `MCHGC<nnn>`; allowed values = `QMCHGCR` | Ref / spec |
 | 03 | AC input range | Appliance | `QPIRI[15]`, `QGR` | M | `PGR<NN>` (00 Appliance, 01 UPS) | Spec |
 | 05 | Battery type | User ("USE", 3rd on the LCD list AGM / FLd / USE → code `2`) | `QPIRI[12]`, `QBT`, `HBAT[0]` | M | `PBT<NN>` (Ref: `03` = LIA, `04` = PYL on its firmware). ⚠ Changing the type may overwrite P26/P27/P29 with the type's presets; re-read them afterwards | Ref |
@@ -20,7 +20,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 | 11 | Max AC (utility) charge current | 2 A | `QPIRI[13]`, `HEEP1[2]` | M (2 A seen as real charge current) | `MUCHGC<nnn>`; allowed = `QMUCHGCR` (`002 010 … 060`) | Ref (ACK + readback) |
 | 12 | Back-to-grid voltage | 22.0 V | `QPIRI[8]`, `HEEP2[4]` | **V** (22.0 → 22.5) | `PBCV<nn.n>` | Ref (ACK + readback) |
 | 13 | Back-to-battery voltage | 25.0 V | `QPIRI[22]`, `HEEP2[5]` | **V** (25.0 → 25.5) | `PBDV<nn.n>` | Ref (ACK + readback) |
-| 16 | Charger source priority | Only solar | `QPIRI[17]` (`2`) | V (owner, LCD) | `PCP<NN>`: `PCP00` solar first, `PCP01` solar + utility, `PCP02` only solar | Ref (round-trip confirmed there, same codes) |
+| 16 | Charger source priority | Solar and utility (owner switched 2026-10-11; before: solar first, only solar) | `QPIRI[17]` (`0` = solar first, `1` = solar + utility, `2` = only solar) | V (owner, all three) | `PCP<NN>`: `PCP00` solar first, `PCP01` solar + utility, `PCP02` only solar | Ref (round-trip confirmed there, same codes) |
 | 18 | Buzzer | on | `QFLAG` `a` | M | `PEa` / `PDa` | Ref |
 | 19 | Return to default screen | off | `QFLAG` `k`, `HEEP1[4]` (`002` = off, ref `012` = on) | M / R | `PEk` / `PDk` | Ref |
 | 20 | Backlight | on | `QFLAG` `x` | M | `PEx` / `PDx` | Ref |
@@ -67,7 +67,21 @@ Confidence of the read position: **V** = verified here by a change (owner change
 
 ## In the Home Assistant integration (0.2.0)
 
-Read (sensors): P01, P02, P03, P05, P06–P08, P11–P13, P16, P18–P20, P22–P27, P29, P30, P31, P33–P35, P43, P46/P47, P48/P49, the clock (P51–P55), and, disabled by default, P38, P40, P56 and the dual-output cut-off / recover voltage / recover delay. Written (control entities, at the user's risk, owner to test): P01 (`POP01` only), P02 (`MNCHGC`), P06/P07/P08/P18–P20/P22/P23/P25 (`PE`/`PD`), P11 (`MUCHGC`), P12 (`PBCV`), P13 (`PBDV`), P16 (`PCP02` only), P26 (`PCVV`), P29 (`PSDV`), P43 (`PVENGUSE`). Details: [integration.md](integration.md#entities).
+Read (sensors): P01, P02, P03, P05, P06–P08, P11–P13, P16, P18–P20, P22–P27, P29, P30, P31, P33–P35, P43, P46/P47, P48/P49, the clock (P51–P55), and, disabled by default, P38, P40, P56 and the dual-output cut-off / recover voltage / recover delay. Written (control entities, at the user's risk, owner to test): P01 (`POP00`, `POP01`), P02 (`MNCHGC`), P06/P07/P08/P18–P20/P22/P23/P25 (`PE`/`PD`), P11 (`MUCHGC`), P12 (`PBCV`), P13 (`PBDV`), P16 (`PCP00`, `PCP01`, `PCP02`), P26 (`PCVV`), P29 (`PSDV`), P43 (`PVENGUSE`). Details: [integration.md](integration.md#entities).
+
+## Other community-known setters (not used here)
+
+Checked 2026-10-11 against [mpp-solar `pi30.py`](https://github.com/jblance/mpp-solar/blob/master/mppsolar/protocols/pi30.py) and the solarplug-esphome write surface. Besides the commands in the table above, the community lists these; none is known to work on VMII firmware. `PBATCD` and `PBATMAXDISC` are implemented at the owner's request (2026-10-11, owner tests them; see [integration.md](integration.md#control-entities)); the rest are not:
+
+| Command | Meaning (source) | Note |
+|---|---|---|
+| `PBATCD<abc>` | Battery charge / discharge enable bits (mpp-solar, PI30 MAX family) | Implemented (select). Bits: a = discharge, b = discharge with standby kept, c = charge; `000` clears the overrides; `011`/`010` shut the unit down when PV and grid are missing (left out). No read-back query. Forum report: both off gave warning 60 on a MAX |
+| `PBATMAXDISC<nnn>` | Max battery discharge current (MAX family; `000` = off, 30–150 A on 48 V) | Implemented (number); read-back only via `QPIRI` on MAX units, absent here |
+| `POPLG`, `POPM`, `PPCP`, `PPVOKC`, `PSPB` | Operation logic, output mode / parallel, PV-OK condition, solar power balance (mpp-solar, MAX / 4000–5000 models) | other model families |
+| `BTA<±0n>` | Battery voltage reading calibration (mpp-solar) | changes measurements; avoid |
+| `PSAVE` | Save EEPROM (mpp-solar) | not needed on VMII (ACK already persists) |
+| `PF` | Reset all settings to defaults | **never** send |
+| `PCP03`, `PVENGUSE02` | Extra codes (solarplug-esphome: untested) | not offered by this firmware's LCD |
 
 ## Writing the AC output schedule (P48/P49)
 
