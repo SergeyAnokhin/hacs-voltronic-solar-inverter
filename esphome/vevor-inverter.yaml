@@ -19,6 +19,8 @@ substitutions:
 # "Enable control entities" option. Uncomment both lines to enable them.
 # packages:
 #   controls: !include packages/vevor-controls.yaml
+# Optional PV string current (two Hall sensors + ADS1115, docs/hall-current-sensors.md):
+#   pv_current: !include packages/pv-string-current.yaml
 
 esphome:
   name: ${name}

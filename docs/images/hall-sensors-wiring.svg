@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 830" width="1100" height="830" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrPV" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c62828"/>
+    </marker>
+    <marker id="arrW" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ffffff"/>
+    </marker>
+    <g id="panel">
+      <rect x="0" y="0" width="46" height="60" rx="2" fill="#1a3a6b" stroke="#0d2445" stroke-width="2"/>
+      <line x1="15.3" y1="2" x2="15.3" y2="58" stroke="#4f7cc0" stroke-width="1"/>
+      <line x1="30.6" y1="2" x2="30.6" y2="58" stroke="#4f7cc0" stroke-width="1"/>
+      <line x1="2" y1="15" x2="44" y2="15" stroke="#4f7cc0" stroke-width="1"/>
+      <line x1="2" y1="30" x2="44" y2="30" stroke="#4f7cc0" stroke-width="1"/>
+      <line x1="2" y1="45" x2="44" y2="45" stroke="#4f7cc0" stroke-width="1"/>
+    </g>
+    <g id="gnd">
+      <line x1="-10" y1="0" x2="10" y2="0" stroke="#212121" stroke-width="2.5"/>
+      <line x1="-6.5" y1="5" x2="6.5" y2="5" stroke="#212121" stroke-width="2.5"/>
+      <line x1="-3" y1="10" x2="3" y2="10" stroke="#212121" stroke-width="2.5"/>
+    </g>
+  </defs>
+
+  <!-- background and title -->
+  <rect x="0" y="0" width="1100" height="830" rx="12" fill="#ffffff"/>
+  <text x="550" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#212121">Two Hall current sensors on the PV strings + ADS1115 + ESP32</text>
+  <text x="550" y="56" text-anchor="middle" font-size="13" fill="#616161">QNHCK2-16 (30 A, 3.3 V supply, output 1.65 V ± 0.625 V) · ADS1115 16-bit ADC on I²C · ESPHome</text>
+
+  <!-- zones -->
+  <rect x="14" y="72" width="452" height="536" rx="10" fill="#fdecea" stroke="#e57373" stroke-dasharray="6 4"/>
+  <text x="28" y="94" font-size="13" font-weight="700" fill="#c62828">PV DC side: up to 500 V DC. Switch the PV isolator off first!</text>
+  <rect x="466" y="72" width="620" height="536" rx="10" fill="#e8f4fd" stroke="#64b5f6" stroke-dasharray="6 4"/>
+  <text x="1072" y="94" text-anchor="end" font-size="13" font-weight="700" fill="#1565c0">3.3 V low-voltage side (no contact with the PV wires)</text>
+
+  <!-- PV string 1 -->
+  <text x="40" y="120" font-size="13" font-weight="700" fill="#263238">PV string 1</text>
+  <use href="#panel" x="40" y="128"/>
+  <use href="#panel" x="92" y="128"/>
+  <use href="#panel" x="144" y="128"/>
+  <!-- PV string 2 -->
+  <use href="#panel" x="40" y="440"/>
+  <use href="#panel" x="92" y="440"/>
+  <use href="#panel" x="144" y="440"/>
+  <text x="40" y="520" font-size="13" font-weight="700" fill="#263238">PV string 2</text>
+
+  <!-- PV minus wires: straight to the inverter, never through a sensor -->
+  <path d="M40,158 H26 V470 H40" fill="none" stroke="#37474f" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M26,335 H150" fill="none" stroke="#37474f" stroke-width="6"/>
+  <circle cx="26" cy="335" r="6" fill="#37474f"/>
+  <text x="34" y="150" font-size="11" font-weight="700" fill="#37474f">−</text>
+  <text x="34" y="462" font-size="11" font-weight="700" fill="#37474f">−</text>
+
+  <!-- PV plus wires: through the sensor holes -->
+  <path d="M190,158 H432 V315" fill="none" stroke="#c62828" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M190,470 H432 V315" fill="none" stroke="#c62828" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M432,315 H340" fill="none" stroke="#c62828" stroke-width="6"/>
+  <circle cx="432" cy="315" r="6" fill="#c62828"/>
+  <text x="196" y="150" font-size="11" font-weight="700" fill="#c62828">+</text>
+  <text x="196" y="462" font-size="11" font-weight="700" fill="#c62828">+</text>
+  <!-- current direction arrows -->
+  <line x1="290" y1="158" x2="300" y2="158" stroke="#c62828" stroke-width="6" marker-end="url(#arrPV)"/>
+  <line x1="290" y1="470" x2="300" y2="470" stroke="#c62828" stroke-width="6" marker-end="url(#arrPV)"/>
+
+  <!-- inverter PV input -->
+  <rect x="150" y="270" width="190" height="96" rx="8" fill="#eceff1" stroke="#455a64" stroke-width="2"/>
+  <text x="245" y="295" text-anchor="middle" font-size="14" font-weight="700" fill="#263238">Inverter PV input</text>
+  <text x="245" y="313" text-anchor="middle" font-size="11" fill="#455a64">GD5548JMH, 1 MPPT</text>
+  <text x="245" y="328" text-anchor="middle" font-size="11" fill="#455a64">max 18 A, max 500 V</text>
+  <text x="330" y="348" text-anchor="end" font-size="12" font-weight="700" fill="#c62828">PV+</text>
+  <text x="160" y="358" font-size="12" font-weight="700" fill="#37474f">PV−</text>
+
+  <!-- Hall sensor 1 -->
+  <rect x="400" y="190" width="90" height="70" rx="10" fill="#37474f" stroke="#1c262b" stroke-width="2"/>
+  <circle cx="432" cy="225" r="17" fill="#cfd8dc" stroke="#1c262b" stroke-width="2"/>
+  <line x1="432" y1="190" x2="432" y2="260" stroke="#c62828" stroke-width="6"/>
+  <line x1="468" y1="203" x2="468" y2="242" stroke="#ffffff" stroke-width="3" marker-end="url(#arrW)"/>
+  <text x="392" y="216" text-anchor="end" font-size="13" font-weight="700" fill="#263238">Hall sensor 1</text>
+  <text x="392" y="232" text-anchor="end" font-size="11" fill="#455a64">QNHCK2-16, 30 A</text>
+  <text x="392" y="246" text-anchor="end" font-size="11" fill="#455a64">arrow = current flow</text>
+
+  <!-- Hall sensor 2 -->
+  <rect x="400" y="370" width="90" height="70" rx="10" fill="#37474f" stroke="#1c262b" stroke-width="2"/>
+  <circle cx="432" cy="405" r="17" fill="#cfd8dc" stroke="#1c262b" stroke-width="2"/>
+  <line x1="432" y1="370" x2="432" y2="440" stroke="#c62828" stroke-width="6"/>
+  <line x1="468" y1="428" x2="468" y2="389" stroke="#ffffff" stroke-width="3" marker-end="url(#arrW)"/>
+  <text x="392" y="396" text-anchor="end" font-size="13" font-weight="700" fill="#263238">Hall sensor 2</text>
+  <text x="392" y="412" text-anchor="end" font-size="11" fill="#455a64">QNHCK2-16, 30 A</text>
+  <text x="392" y="426" text-anchor="end" font-size="11" fill="#455a64">arrow = current flow</text>
+
+  <!-- sensor 1 cable: red 3V3, yellow OUT, black GND -->
+  <path d="M490,208 H525 V186" fill="none" stroke="#d32f2f" stroke-width="3.5" stroke-linejoin="round"/>
+  <line x1="513" y1="186" x2="537" y2="186" stroke="#d32f2f" stroke-width="3.5"/>
+  <text x="525" y="179" text-anchor="middle" font-size="11" font-weight="700" fill="#d32f2f">3V3</text>
+  <line x1="490" y1="225" x2="614" y2="225" stroke="#f9a825" stroke-width="3.5"/>
+  <text x="555" y="219" text-anchor="middle" font-size="11" font-weight="700" fill="#b26a00">OUT 1</text>
+  <path d="M490,242 H550 V258" fill="none" stroke="#212121" stroke-width="3.5" stroke-linejoin="round"/>
+  <use href="#gnd" x="550" y="258"/>
+
+  <!-- sensor 2 cable -->
+  <path d="M490,388 H525 V366" fill="none" stroke="#d32f2f" stroke-width="3.5" stroke-linejoin="round"/>
+  <line x1="513" y1="366" x2="537" y2="366" stroke="#d32f2f" stroke-width="3.5"/>
+  <text x="525" y="359" text-anchor="middle" font-size="11" font-weight="700" fill="#d32f2f">3V3</text>
+  <line x1="490" y1="405" x2="614" y2="405" stroke="#f9a825" stroke-width="3.5"/>
+  <text x="575" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#b26a00">OUT 2</text>
+  <path d="M490,422 H550 V438" fill="none" stroke="#212121" stroke-width="3.5" stroke-linejoin="round"/>
+  <use href="#gnd" x="550" y="438"/>
+
+  <!-- ADS1115 module -->
+  <rect x="620" y="180" width="170" height="260" rx="10" fill="#5e35b1" stroke="#311b92" stroke-width="2"/>
+  <text x="705" y="206" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">ADS1115</text>
+  <text x="705" y="222" text-anchor="middle" font-size="10" fill="#d1c4e9">16-bit ADC, I²C 0x48</text>
+  <rect x="680" y="292" width="50" height="40" rx="3" fill="#212121"/>
+  <text x="705" y="316" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff">ADS1115</text>
+  <!-- left pins -->
+  <circle cx="620" cy="225" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="620" cy="285" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="620" cy="345" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="620" cy="405" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <text x="632" y="229" font-size="12" font-weight="700" fill="#ffffff">A0</text>
+  <text x="632" y="289" font-size="12" font-weight="700" fill="#ffffff">A2</text>
+  <text x="632" y="349" font-size="12" font-weight="700" fill="#ffffff">A3</text>
+  <text x="632" y="409" font-size="12" font-weight="700" fill="#ffffff">A1</text>
+  <!-- A2 measures the 3.3 V supply -->
+  <path d="M614,285 H590 V266" fill="none" stroke="#d32f2f" stroke-width="3.5" stroke-linejoin="round"/>
+  <line x1="578" y1="266" x2="602" y2="266" stroke="#d32f2f" stroke-width="3.5"/>
+  <text x="590" y="259" text-anchor="middle" font-size="11" font-weight="700" fill="#d32f2f">3V3</text>
+  <text x="604" y="304" text-anchor="end" font-size="10" fill="#c62828">supply ref.</text>
+  <text x="608" y="349" text-anchor="end" font-size="11" fill="#616161">free</text>
+  <!-- right pins -->
+  <circle cx="790" cy="225" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="790" cy="260" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="790" cy="292" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="790" cy="345" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="790" cy="380" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <text x="778" y="229" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">VDD</text>
+  <text x="778" y="264" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">GND</text>
+  <text x="778" y="296" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">ADDR</text>
+  <text x="778" y="349" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">SCL</text>
+  <text x="778" y="384" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">SDA</text>
+  <text x="705" y="430" text-anchor="middle" font-size="10" fill="#d1c4e9">ALRT: not connected</text>
+
+  <!-- ADS1115 <-> ESP32 -->
+  <line x1="796" y1="225" x2="874" y2="225" stroke="#d32f2f" stroke-width="3.5"/>
+  <line x1="796" y1="260" x2="874" y2="260" stroke="#212121" stroke-width="3.5"/>
+  <path d="M796,292 H812 V260" fill="none" stroke="#212121" stroke-width="3.5" stroke-linejoin="round"/>
+  <circle cx="812" cy="260" r="4.5" fill="#212121"/>
+  <line x1="796" y1="345" x2="874" y2="345" stroke="#1e88e5" stroke-width="3.5"/>
+  <line x1="796" y1="380" x2="874" y2="380" stroke="#2e7d32" stroke-width="3.5"/>
+
+  <!-- ESP32 -->
+  <rect x="880" y="170" width="180" height="290" rx="10" fill="#263238" stroke="#000000" stroke-width="2"/>
+  <rect x="925" y="184" width="90" height="56" rx="4" fill="#90a4ae"/>
+  <text x="970" y="216" text-anchor="middle" font-size="11" font-weight="700" fill="#263238">ESP-WROOM-32</text>
+  <circle cx="880" cy="225" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="880" cy="260" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="880" cy="345" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <circle cx="880" cy="380" r="6" fill="#ffd54f" stroke="#5d4037"/>
+  <text x="892" y="264" font-size="12" font-weight="700" fill="#ffffff">GND</text>
+  <text x="892" y="229" font-size="12" font-weight="700" fill="#ffffff">3V3</text>
+  <text x="892" y="349" font-size="12" font-weight="700" fill="#ffffff">GPIO22 (SCL)</text>
+  <text x="892" y="384" font-size="12" font-weight="700" fill="#ffffff">GPIO21 (SDA)</text>
+  <text x="970" y="300" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">ESP32 DevKit</text>
+  <text x="970" y="420" text-anchor="middle" font-size="10" fill="#b0bec5">GPIO16/17 stay free for</text>
+  <text x="970" y="434" text-anchor="middle" font-size="10" fill="#b0bec5">the MAX3232 (RS232 guide)</text>
+  <rect x="945" y="448" width="50" height="22" rx="3" fill="#b0bec5" stroke="#455a64"/>
+  <text x="970" y="464" text-anchor="middle" font-size="11" font-weight="700" fill="#263238">USB</text>
+  <line x1="970" y1="470" x2="970" y2="510" stroke="#757575" stroke-width="5"/>
+  <rect x="900" y="510" width="140" height="34" rx="6" fill="#fafafa" stroke="#757575"/>
+  <text x="970" y="532" text-anchor="middle" font-size="12" fill="#424242">5 V USB charger</text>
+
+  <!-- Wi-Fi -->
+  <path d="M950,146 Q970,128 990,146" fill="none" stroke="#1565c0" stroke-width="3"/>
+  <path d="M942,138 Q970,114 998,138" fill="none" stroke="#1565c0" stroke-width="3"/>
+  <circle cx="970" cy="154" r="4" fill="#1565c0"/>
+  <text x="970" y="122" text-anchor="middle" font-size="12" font-weight="700" fill="#1565c0">Wi-Fi → Home Assistant</text>
+
+  <!-- notes in the zones -->
+  <text x="28" y="556" font-size="12" fill="#b71c1c">Only <tspan font-weight="700">PV+</tspan> of each string goes through the hole (no electrical contact).</text>
+  <text x="28" y="574" font-size="12" fill="#b71c1c">Never pass + and − of one string through the same sensor:</text>
+  <text x="28" y="592" font-size="12" fill="#b71c1c">their fields cancel and the reading stays at 0 A.</text>
+  <text x="482" y="556" font-size="12" fill="#0d47a1">Gain ±4.096 V: the sensor swings 1.025 … 2.275 V (−30 … +30 A).</text>
+  <text x="482" y="574" font-size="12" fill="#0d47a1">A2 reads the 3.3 V supply: the zero point (½ supply) and the slope</text>
+  <text x="482" y="592" font-size="12" fill="#0d47a1">follow it, so a 3.25 V or 3.35 V regulator does not shift the reading.</text>
+
+  <!-- legend -->
+  <rect x="14" y="620" width="1072" height="196" rx="10" fill="#fafafa" stroke="#e0e0e0"/>
+  <text x="30" y="645" font-size="14" font-weight="700" fill="#212121">Legend</text>
+  <line x1="30" y1="666" x2="80" y2="666" stroke="#c62828" stroke-width="6"/>
+  <text x="90" y="671" font-size="13" fill="#212121">PV+ cable of a string (passes through the sensor hole, current flows panel → inverter)</text>
+  <line x1="30" y1="690" x2="80" y2="690" stroke="#37474f" stroke-width="6"/>
+  <text x="90" y="695" font-size="13" fill="#212121">PV− cable (goes straight to the inverter, never through a sensor)</text>
+  <line x1="30" y1="714" x2="80" y2="714" stroke="#d32f2f" stroke-width="3.5"/>
+  <line x1="58" y1="706" x2="72" y2="706" stroke="#d32f2f" stroke-width="3"/>
+  <line x1="65" y1="706" x2="65" y2="714" stroke="#d32f2f" stroke-width="3"/>
+  <text x="90" y="719" font-size="13" fill="#212121">3.3 V: every <tspan font-weight="700" fill="#d32f2f">3V3</tspan> mark is one wire net fed by the ESP32 3V3 pin (breadboard + rail or a lever connector)</text>
+  <line x1="30" y1="738" x2="80" y2="738" stroke="#212121" stroke-width="3.5"/>
+  <use href="#gnd" x="96" y="733"/>
+  <text x="114" y="743" font-size="13" fill="#212121">GND: every black wire and ground mark goes to an ESP32 GND pin (breadboard − rail)</text>
+  <line x1="30" y1="762" x2="80" y2="762" stroke="#f9a825" stroke-width="3.5"/>
+  <text x="90" y="767" font-size="13" fill="#212121">Sensor output: 1.65 V at 0 A, ±0.625 V at ±30 A (20.8 mV per ampere) → ADS1115 A0 / A1</text>
+  <line x1="30" y1="786" x2="54" y2="786" stroke="#1e88e5" stroke-width="3.5"/>
+  <line x1="56" y1="786" x2="80" y2="786" stroke="#2e7d32" stroke-width="3.5"/>
+  <text x="90" y="791" font-size="13" fill="#212121">I²C bus: SCL (blue) → GPIO22, SDA (green) → GPIO21. ADDR → GND sets address 0x48</text>
+  <text x="1070" y="810" text-anchor="end" font-size="12" font-weight="700" fill="#c62828">Reading negative? The arrow on the sensor points the wrong way: turn the sensor over (or flip the sign in the YAML).</text>
+</svg>

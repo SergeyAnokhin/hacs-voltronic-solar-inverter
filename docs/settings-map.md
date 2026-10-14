@@ -26,7 +26,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 | 20 | Backlight | on | `QFLAG` `x` | M | `PEx` / `PDx` | Ref |
 | 22 | Beep on source loss | on | `QFLAG` `y` | M | `PEy` / `PDy` | Ref |
 | 23 | Overload bypass | on | `QFLAG` `b` | M | `PEb` / `PDb` | Spec |
-| 24 | Battery low-alarm voltage | 22.0 V | `HEEP2[1]` | M (app 22; did **not** move when P12 changed) | none known; Ref portal: "Command not supported" | — |
+| 24 | Battery low-alarm voltage | 23.6 V (owner, 2026-10-11) | `HEEP2[3]` | **V** (LCD 23.2 → 23.6 moved `HEEP2[3]`; until 0.4.12 the integration wrongly read `HEEP2[1]`) | none known; Ref portal: "Command not supported" | — |
 | 25 | Record fault codes | off | `QFLAG` `z` | M | `PEz` / `PDz` | Spec |
 | 26 | Bulk (CV) voltage | 29.2 V | `QPIRI[10]`, `HEEP1[14]` | **V** (29.2 → 29.1) | `PCVV<nn.n>` (Ref portal: not supported on its firmware) | Spec |
 | 27 | Float voltage | 29.1 V | `QPIRI[11]`, `HEEP1[15]` | **V** (29.1 → 29.0) | `PBFT<nn.n>` (Ref: NAK on tested values) | Spec |
@@ -56,7 +56,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 
 | Item | Now (app) | Read source | Conf. | Write command | Source |
 |---|---|---|---|---|---|
-| Cut-off voltage point | 22.0 V (app "Parallel Shutdown Battery Voltage") | `HEEP2[3]` | M | `PTOPV<nn.n>` | Spec (remote panel) |
+| Cut-off voltage point | 22.0 V (app "Parallel Shutdown Battery Voltage") | `HEEP2[1]` | ? (the only other 22.0 V field once `HEEP2[3]` turned out to be P24) | `PTOPV<nn.n>` | Spec (remote panel) |
 | Cut-off SOC point | 20 % (app "Parallel Shutdown Battery SOC") | `HEEP2[2]` or `HEEP1[11]` | ? | `PTOPVC<nnn>` | Spec |
 | Recover voltage | 26.0 V | `HEEP2[15]` | M | none known | — |
 | Recover SOC | 50 % | `HEEP1[13]` or `HEEP2[16]` | ? | `PDSRS<nnn>` (Ref: range 0–50 %) | Ref |

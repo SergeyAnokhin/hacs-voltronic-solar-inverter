@@ -22,6 +22,10 @@ Full build guide with parts list, pin tables, how to find the RJ45 pins, first t
 
 Short version: ESP32 `3V3`/`GND`/`GPIO17`/`GPIO16` → MAX3232 `VCC`/`GND`/`TXD`/`RXD`; MAX3232 RS232 side `R1IN` ← inverter TX, `T1OUT` → inverter RX, `GND` ↔ GND. The GD5548JMH RJ45 pinout is unpublished, so measure it first. Only one master on the port (unplug the Elfin gateway and the Wi-Fi dongle).
 
+## Optional: PV string currents
+
+[`packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml) adds two Hall current sensors (one per PV string) read through an ADS1115 on I²C (GPIO21/22). It works with both configs (commented `packages:` lines are in each) and does not talk to the inverter. Build guide and entities: [hall-current-sensors.md](hall-current-sensors.md).
+
 ## Setup
 
 1. Copy [`esphome/secrets.yaml.example`](../esphome/secrets.yaml.example) to `esphome/secrets.yaml` (git-ignored) and fill it in.

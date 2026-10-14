@@ -64,8 +64,8 @@ def parse_heep1(payload: str) -> SettingsEeprom1:
 class SettingsEeprom2:
     """HEEP2 (settings snapshot 2), parsed positions only."""
 
-    battery_low_alarm_voltage: float  # [1] V, P24
-    dual_output_cutoff_voltage: float  # [3] V
+    battery_low_alarm_voltage: float  # [3] V, P24 (verified 23.2 -> 23.6)
+    dual_output_cutoff_voltage: float  # [1] V (guess: the only other 22.0 V field)
     ac_charger_schedule: Schedule  # [11], P46/P47 (verified)
     ac_output_schedule: Schedule  # [12], P48/P49 (verified)
     dual_output_recover_delay: int  # [13] min
@@ -77,8 +77,8 @@ def parse_heep2(payload: str) -> SettingsEeprom2:
     cmd = "HEEP2"
     f = _fields(payload, cmd, 16)
     return SettingsEeprom2(
-        battery_low_alarm_voltage=_float(f[1], cmd),
-        dual_output_cutoff_voltage=_float(f[3], cmd),
+        battery_low_alarm_voltage=_float(f[3], cmd),
+        dual_output_cutoff_voltage=_float(f[1], cmd),
         ac_charger_schedule=parse_schedule(f[11], cmd),
         ac_output_schedule=parse_schedule(f[12], cmd),
         dual_output_recover_delay=_int(f[13], cmd),

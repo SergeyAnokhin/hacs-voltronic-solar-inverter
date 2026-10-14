@@ -14,6 +14,11 @@ substitutions:
   uart_tx_pin: GPIO17  # ESP32 TX -> MAX3232 TXD/TX (TTL side)
   uart_rx_pin: GPIO16  # ESP32 RX <- MAX3232 RXD/RX (TTL side)
 
+# Optional PV string current (two Hall sensors + ADS1115, published over the
+# ESPHome API, see docs/hall-current-sensors.md). Uncomment both lines:
+# packages:
+#   pv_current: !include packages/pv-string-current.yaml
+
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}

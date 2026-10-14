@@ -1,0 +1,104 @@
+# Two Hall-effect current sensors (QNHCK2-16, 30 A, 3.3 V supply) on the PV+
+# cables of the two PV strings, read through an ADS1115 16-bit ADC on I2C.
+# Read-only: it does not talk to the inverter at all.
+#
+# Add it to vevor-bridge.yaml, vevor-inverter.yaml or any ESP32 config:
+#
+#   packages:
+#     pv_current: !include packages/pv-string-current.yaml
+#
+# Wiring, zero calibration and Home Assistant use: docs/hall-current-sensors.md
+#
+# ADS1115 inputs: A0 = sensor 1 OUT, A1 = sensor 2 OUT, A2 = the 3.3 V supply.
+# Current = (OUT - supply / 2) / (sensitivity * supply / 3.3 V): the sensor is
+# assumed ratiometric (1.65 V = half of 3.3 V), so A2 corrects for a supply
+# that is not exactly 3.3 V.
+
+substitutions:
+  i2c_sda_pin: GPIO21
+  i2c_scl_pin: GPIO22
+  # 0.625 V per 30 A at 3.3 V supply (sensor label "30A 1.65V 0.625V PWR3.3V").
+  hall_sensitivity: "0.0208333"  # V per A
+  # Zero calibration in A: with PV switched off, set to minus the reading.
+  string1_zero_trim: "0.0"
+  string2_zero_trim: "0.0"
+
+i2c:
+  id: i2c_hall
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  frequency: 400kHz
+
+ads1115:
+  - id: ads_hall
+    address: 0x48  # ADDR pin to GND
+
+sensor:
+  # Sensor supply on A2, used for the ratiometric correction.
+  - platform: ads1115
+    ads1115_id: ads_hall
+    id: hall_supply
+    name: Hall sensor supply
+    multiplexer: A2_GND
+    gain: 4.096
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    update_interval: 1s
+    filters:
+      - sliding_window_moving_average:
+          window_size: 5
+          send_every: 1
+
+  # Owner's naming convention: "<name> raw" = every sample (1 s, for the live
+  # view; exclude *_raw from the recorder), plain name = 60 s mean.
+  - platform: ads1115
+    ads1115_id: ads_hall
+    id: pv_string1_current_raw
+    name: PV string 1 current raw
+    multiplexer: A0_GND
+    gain: 4.096
+    update_interval: 250ms
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - lambda: |-
+          const float vs = id(hall_supply).state;
+          if (isnan(vs) || vs < 3.0f) return {};
+          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + ${string1_zero_trim};
+      - sliding_window_moving_average:
+          window_size: 4
+          send_every: 4
+
+  - platform: ads1115
+    ads1115_id: ads_hall
+    id: pv_string2_current_raw
+    name: PV string 2 current raw
+    multiplexer: A1_GND
+    gain: 4.096
+    update_interval: 250ms
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - lambda: |-
+          const float vs = id(hall_supply).state;
+          if (isnan(vs) || vs < 3.0f) return {};
+          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + ${string2_zero_trim};
+      - sliding_window_moving_average:
+          window_size: 4
+          send_every: 4
+
+  - platform: copy
+    source_id: pv_string1_current_raw
+    name: PV string 1 current
+    filters:
+      - throttle_average: 60s
+
+  - platform: copy
+    source_id: pv_string2_current_raw
+    name: PV string 2 current
+    filters:
+      - throttle_average: 60s

@@ -70,6 +70,13 @@ def test_heep2_other_positions():
     assert s.dual_output_recover_voltage == 26.0
 
 
+def test_heep2_low_alarm_voltage_verified_change():
+    # Recorded 2026-10-11: the owner changed P24 on the LCD from 23.2 to 23.6 V.
+    s = parse_heep2("1 022.0 020 023.6 023.0 025.5 0 029.2 060 120 030 0000 0000 05 0000 26.0 500")
+    assert s.battery_low_alarm_voltage == 23.6
+    assert s.dual_output_cutoff_voltage == 22.0
+
+
 def test_heep1_solar_supply_priority_verified_change():
     assert parse_heep1(H_S["HEEP1"]).solar_supply_priority == 0  # BLU
     lbu = parse_heep1(H_LBU["HEEP1"])

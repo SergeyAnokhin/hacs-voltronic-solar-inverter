@@ -13,5 +13,6 @@ Living documentation for the Voltronic/Vevor solar inverter Home Assistant integ
 | [settings-map.md](settings-map.md) | You need, per LCD program P01–P64, where to read it and which (owner-tested) command writes it |
 | [local-data.md](local-data.md) | You analyse the owner's real HA history: what to copy into `local_data/`, how to export entities with `tools/ha_history.py` |
 | [esphome-hardware.md](esphome-hardware.md) | You build or debug the ESP32 + MAX3232 hardware: parts, wiring diagrams, RJ45 pin finding, troubleshooting |
+| [hall-current-sensors.md](hall-current-sensors.md) | You build or change the PV string current measurement: two Hall sensors + ADS1115 on the ESP32, wiring diagram, ESPHome package, calibration |
 | [esphome.md](esphome.md) | You touch the ESPHome configs in `esphome/` (ESP32 + MAX3232 instead of the Elfin gateway): wiring, native vs bridge, controls |
 | [inverter-vevor-gd5548jmh.md](inverter-vevor-gd5548jmh.md) | You need device specs, LCD settings meaning, fault/warning codes |
