@@ -43,10 +43,12 @@ from .const import (
     HIDDEN_KEYS,
     MEDIAN_WINDOW,
     REMOVED_KEYS,
+    SMOOTHING_ABSOLUTE_THRESHOLD_CURRENT,
     SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE,
     SMOOTHING_ABSOLUTE_THRESHOLD_W,
     SMOOTHING_HEARTBEAT,
     SMOOTHING_RELATIVE_THRESHOLD,
+    SMOOTHING_RELATIVE_THRESHOLD_CURRENT,
     SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE,
     SMOOTHING_WINDOW,
     UPDATE_GROUP_SLOW,
@@ -144,16 +146,16 @@ def _voltage(key: str, value_fn, precision: int = 1, **kwargs) -> dict[str, Any]
     )
 
 
-def _current(key: str, value_fn, **kwargs) -> dict[str, Any]:
-    """Currents are whole amperes."""
+def _current(key: str, value_fn, precision: int = 0, **kwargs) -> dict[str, Any]:
+    """Currents are whole amperes unless ``precision`` says otherwise (PV current: 0.1 A)."""
     return dict(
         key=key,
         translation_key=key,
         device_class=SensorDeviceClass.CURRENT,
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         state_class=SensorStateClass.MEASUREMENT,
-        precision=0,
-        suggested_display_precision=0,
+        precision=precision,
+        suggested_display_precision=precision,
         value_fn=value_fn,
         **kwargs,
     )
@@ -251,14 +253,9 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: d.status.heatsink_temperature,
     ),
-    # Raw sample, not rounded to whole amperes: the field has one decimal (`00.0`); kept to check
-    # whether it is usable for a precise PV power (x PV voltage).
     VoltronicFastSensorDescription(
-        **{
-            **_current("pv_input_current", lambda d: d.status.pv_input_current),
-            "precision": 1,
-            "suggested_display_precision": 1,
-        }
+        # Every sample, one decimal (the field is `00.0`); exclude it from the recorder if the interval is short
+        **_current("pv_input_current_raw", lambda d: d.status.pv_input_current, precision=1)
     ),
     VoltronicFastSensorDescription(
         # Every sample; exclude it from the recorder if the interval is short
@@ -597,6 +594,15 @@ SMOOTHED_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
             lambda d: d.status.pv_input_voltage,
             smoothing_relative_threshold=SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE,
             smoothing_absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE,
+        )
+    ),
+    VoltronicFastSensorDescription(
+        **_current(
+            "pv_input_current",
+            lambda d: d.status.pv_input_current,
+            precision=1,
+            smoothing_relative_threshold=SMOOTHING_RELATIVE_THRESHOLD_CURRENT,
+            smoothing_absolute_threshold=SMOOTHING_ABSOLUTE_THRESHOLD_CURRENT,
         )
     ),
     VoltronicFastSensorDescription(

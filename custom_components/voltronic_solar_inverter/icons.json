@@ -16,6 +16,9 @@
       "pv_input_voltage": {
         "default": "mdi:solar-panel"
       },
+      "pv_input_current_raw": {
+        "default": "mdi:solar-panel"
+      },
       "pv_input_current": {
         "default": "mdi:solar-panel"
       },

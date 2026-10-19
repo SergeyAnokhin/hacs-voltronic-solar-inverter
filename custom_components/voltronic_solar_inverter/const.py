@@ -83,6 +83,9 @@ SMOOTHING_ABSOLUTE_THRESHOLD_W: Final = 20.0
 # PV voltage: ~100-400 V, so a smaller relative step and a volt-sized absolute one.
 SMOOTHING_RELATIVE_THRESHOLD_VOLTAGE: Final = 0.05
 SMOOTHING_ABSOLUTE_THRESHOLD_VOLTAGE: Final = 1.0
+# PV current: 0-~20 A, one decimal.
+SMOOTHING_RELATIVE_THRESHOLD_CURRENT: Final = 0.10
+SMOOTHING_ABSOLUTE_THRESHOLD_CURRENT: Final = 0.5
 SMOOTHING_HEARTBEAT: Final = 600.0
 # PV power median sensor: median over this many seconds, same publish rules.
 MEDIAN_WINDOW: Final = 600.0  # also used for the 10 min maximum

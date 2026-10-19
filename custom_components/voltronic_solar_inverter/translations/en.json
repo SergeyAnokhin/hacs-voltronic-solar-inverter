@@ -90,6 +90,9 @@
       "heatsink_temperature": {
         "name": "Heat-sink temperature"
       },
+      "pv_input_current_raw": {
+        "name": "PV current raw"
+      },
       "pv_input_current": {
         "name": "PV current"
       },
