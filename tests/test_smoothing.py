@@ -183,3 +183,20 @@ def test_daily_energy_can_go_negative_and_restores():
     assert energy.add(monday, 30, -3600) is False  # -0.03 kWh, below the step
     assert energy.add(monday, 60, -3600) is True
     assert energy.value == 1.17
+
+
+def test_daily_energy_last_period_is_the_final_value_of_the_previous_day():
+    from datetime import date
+
+    monday, tuesday = date(2026, 10, 5), date(2026, 10, 6)
+    energy = DailyEnergy(max_gap=30, step=0.05, heartbeat=600)
+    assert energy.last_period is None
+    energy.add(monday, 0, 3600)
+    energy.add(monday, 10, 3600)  # 0.01 kWh, below the step: not published yet
+    assert energy.last_period is None
+    energy.add(tuesday, 20, 3600)
+    assert energy.last_period == 0.01  # exact total, not the thinned published value
+    energy.add(tuesday, 30, 3600)
+    assert energy.last_period == 0.01
+    energy.restore(tuesday, 0.5, last_period=2.5)
+    assert energy.last_period == 2.5

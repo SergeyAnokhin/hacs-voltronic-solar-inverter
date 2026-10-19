@@ -60,13 +60,16 @@ class DailyEnergy:
         self.precision = precision
         self.day: date | None = None
         self.value: float | None = None  # published value
+        self.last_period: float | None = None  # final value of the previous day (kWh)
         self._total = 0.0  # kWh, not rounded
         self._last: tuple[float, float] | None = None  # (monotonic time, W)
         self._published_at: float | None = None
 
-    def restore(self, day: date, value: float) -> None:
+    def restore(self, day: date, value: float, last_period: float | None = None) -> None:
         """Take over a value stored earlier the same day (after a restart)."""
         self.day, self.value, self._total = day, value, value
+        if last_period is not None:
+            self.last_period = last_period
 
     def add(self, day: date, now: float, power: float | None) -> bool:
         """Add a sample taken on ``day`` at monotonic time ``now``; True if the published value changed."""
@@ -75,6 +78,8 @@ class DailyEnergy:
             return False
         new_day = day != self.day
         if new_day:
+            if self.day is not None:
+                self.last_period = round(self._total, self.precision)
             self.day, self._total = day, 0.0
         if self._last is not None and 0 < now - self._last[0] <= self.max_gap:
             self._total += (self._last[1] + power) / 2 * (now - self._last[0]) / 3_600_000

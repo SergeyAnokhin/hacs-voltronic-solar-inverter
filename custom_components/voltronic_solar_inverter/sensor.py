@@ -672,6 +672,7 @@ DAILY_MAX_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
     ),
 )
 ATTR_MAX_TIME = "max_time"
+ATTR_LAST_PERIOD = "last_period"  # same name as the Utility Meter helper: kWh of the previous day
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1077,14 +1078,15 @@ class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, Restore
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         today = dt_util.now().date()
-        if (
-            last is not None
-            and last.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
-            and dt_util.as_local(last.last_updated).date() == today
-        ):
+        if last is not None and last.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             try:
-                self._energy.restore(today, float(last.state))
-            except ValueError:
+                value = float(last.state)
+                if dt_util.as_local(last.last_updated).date() == today:
+                    previous = last.attributes.get(ATTR_LAST_PERIOD)
+                    self._energy.restore(today, value, None if previous is None else float(previous))
+                else:  # the stored value is the last finished day we know of
+                    self._energy.last_period = value
+            except (ValueError, TypeError):
                 pass
         if self.coordinator.data is not None:
             self._add_sample()
@@ -1102,6 +1104,13 @@ class VoltronicDailyEnergySensor(_ExternalBatteryMixin, VoltronicEntity, Restore
     @property
     def native_value(self) -> StateType:
         return self._energy.value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        attributes = super().extra_state_attributes
+        if self._energy.last_period is not None:
+            attributes = {**(attributes or {}), ATTR_LAST_PERIOD: self._energy.last_period}
+        return attributes
 
     @property
     def last_reset(self) -> datetime | None:
