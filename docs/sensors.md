@@ -32,7 +32,7 @@ What every sensor of the integration shows and, for the ones that are **not** a 
 | **`battery_power`** | **battery voltage × (charge current − discharge current)**, rounded to 0.1 W | Derived. Positive = charging, negative = discharging. The currents are whole amperes (~25 W steps on 24 V), so it is coarse |
 | `battery_capacity_estimate` (off) | `QPIGS[10]` | Voltage-based estimate computed by the inverter, **not** a state of charge |
 | `heatsink_temperature` | `QPIGS[11]` | °C; equals the "boost temperature" |
-| `pv_input_current` | `QPIGS[12]` | |
+| `pv_input_current` | `QPIGS[12]` | Every sample, **one decimal, not rounded to whole amperes** (experiment: check whether it gives a precise PV power with the PV voltage). Other currents stay whole amperes |
 | `pv_input_voltage_raw` / `pv_input_voltage` | `QPIGS[13]` | raw every sample; smoothed uses 5 % / 1 V thresholds |
 | `pv_power_raw` / `pv_power` | `QPIGS[19]` | The inverter's own PV charging power; raw + smoothed pair |
 | `scc_battery_voltage` (diag, off) | `QPIGS[14]` | |

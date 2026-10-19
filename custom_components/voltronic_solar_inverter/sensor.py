@@ -251,7 +251,15 @@ FAST_SENSORS: tuple[VoltronicFastSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: d.status.heatsink_temperature,
     ),
-    VoltronicFastSensorDescription(**_current("pv_input_current", lambda d: d.status.pv_input_current)),
+    # Raw sample, not rounded to whole amperes: the field has one decimal (`00.0`); kept to check
+    # whether it is usable for a precise PV power (x PV voltage).
+    VoltronicFastSensorDescription(
+        **{
+            **_current("pv_input_current", lambda d: d.status.pv_input_current),
+            "precision": 1,
+            "suggested_display_precision": 1,
+        }
+    ),
     VoltronicFastSensorDescription(
         # Every sample; exclude it from the recorder if the interval is short
         **_voltage("pv_input_voltage_raw", lambda d: d.status.pv_input_voltage)
