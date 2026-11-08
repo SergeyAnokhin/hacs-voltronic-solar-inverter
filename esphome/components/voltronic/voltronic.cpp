@@ -107,7 +107,6 @@ void Voltronic::dump_config() {
     if (c.wanted)
       ESP_LOGCONFIG(TAG, "  Polls %s (%s, %u sensors, %u text, %u binary)", c.name, c.plain ? "no CRC" : "CRC",
                     (unsigned) c.sensors.size(), (unsigned) c.texts.size(), (unsigned) c.binaries.size());
-  this->check_uart_settings(2400);
 }
 
 void Voltronic::drain_rx_() {

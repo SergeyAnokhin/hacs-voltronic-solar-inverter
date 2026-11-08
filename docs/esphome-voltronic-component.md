@@ -93,7 +93,7 @@ Raw values only: there is no smoothing, no daily energy and no power balance yet
 |---|---|
 | `esphome config` with every entity (ESPHome 2026.10.2) | valid |
 | Host tests `tests/test_esphome_protocol.py` (8 tests: request frames, 30+ recorded answers decoded and validated, corrupted CRC rejected, QPIWS classes / QFLAG / number parsing match Python, foreign H answers rejected) | pass |
-| Firmware compile | see the note in the changelog row of [project-overview.md](project-overview.md#decisions-log) |
+| Firmware compile (`esp32` variant, ESP-IDF 5.5.6, all entities of the package) | success; RAM 26.6 %, flash 40.3 % (on Windows run it from PowerShell, not Git Bash, and with short paths: `ESPHOME_ESP_IDF_PREFIX`, `ESPHOME_DATA_DIR`, `PLATFORMIO_CORE_DIR`) |
 | On the real inverter | **not done**. First check: log at `DEBUG`, look for `H dialect present`, no `bad frame` / `rejected` lines for an hour, compare `QPIGS` and `HGRID` values with the Home Assistant integration (mixed `Q`/`H` on one line is still unverified) |
 
 ## Next stages
