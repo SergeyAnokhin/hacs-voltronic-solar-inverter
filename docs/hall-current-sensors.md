@@ -81,9 +81,11 @@ Settings at the top of the package (`substitutions`, override them in the main f
 |---|---|---|
 | `i2c_sda_pin`, `i2c_scl_pin` | `GPIO21`, `GPIO22` | I²C pins |
 | `hall_sensitivity` | `0.0208333` | V per ampere at 3.3 V supply (0.625 V / 30 A) |
-| `string1_zero_trim`, `string2_zero_trim` | `0.0` | initial zero calibration in amperes; used only until you set a value in Home Assistant (see the *zero trim* entities, step 6) |
+| `string1_zero_trim`, `string2_zero_trim` | `0.0` | initial **manual** zero calibration in amperes; used only until you set a value in Home Assistant (see the *zero trim* entities, step 6) |
 | `raw_send_interval` | `1s` | how often the *raw* entities are sent to Home Assistant (mean of the 250 ms readings in that interval) |
 | `avg_send_interval` | `60s` | how often the smoothed entities are sent (keep it ≥ `raw_send_interval`) |
+| `calib_start_hour`, `calib_end_hour` | `2`, `4` | initial window of the automatic night calibration (step 6); later set in Home Assistant |
+| `calib_max_offset`, `calib_max_spread` | `1.0`, `0.6` | A; a night mean above this offset or with a larger max−min spread is not stored |
 
 Example for fewer updates (raw every 5 s, smoothed every 5 min), in the main file:
 
@@ -103,7 +105,11 @@ The entities belong to the ESP32's ESPHome device (not to the Voltronic integrat
 | PV string 2 current raw | A, one decimal, can be negative | every `raw_send_interval` | A1 |
 | PV string 1 current | A, one decimal, never negative (negative = 0) | every `avg_send_interval` (default 60 s), mean of the raw values | copy of the raw sensor |
 | PV string 2 current | A, one decimal, never negative | every `avg_send_interval` | copy of the raw sensor |
-| PV string 1 zero trim, PV string 2 zero trim (config) | A | editable, stored on the ESP | see step 6 |
+| PV string 1 current calibration raw, PV string 2 current calibration raw (diagnostic) | A, **two decimals, no zero trim** | every `raw_send_interval` | A0 / A1 (a second reading of the same channel); for calibration only, exclude `*_raw` from the recorder |
+| PV string 1 zero trim, PV string 2 zero trim (config) | A | editable, stored on the ESP | the **manual** zero, used when the source is *Manual* (step 6) |
+| PV string 1 night zero trim, PV string 2 night zero trim (config) | A | written by the night calibration, also editable | used when the source is *Night (automatic)* (step 6) |
+| PV zero calibration source (select, config) | Off / Night (automatic) / Manual | stored on the ESP, default *Manual* | which zero is added to the currents (step 6) |
+| PV zero calibration start/end hour, PV zero calibration status | h / text | | automatic night calibration, see step 6 |
 | Hall sensor supply (diagnostic) | V | every 10 s (10-sample mean) | A2 |
 
 The smoothed entities are averaged first and clipped at 0 afterwards (clipping single samples would bias the mean upwards around 0 A). The raw entities stay signed on purpose: you need the sign for the zero calibration and to see a reversed sensor (the smoothed entity then just shows 0).
@@ -136,9 +142,28 @@ The total can be compared with the integration's *PV current* (`QPIGS[12]`) and 
 ## 6. First test and zero calibration
 
 1. Power the ESP32 with the PV isolator **off**. In the log (`esphome logs …`) the ADS1115 is found at `0x48`; *Hall sensor supply* reads about 3.3 V.
-2. With PV off (or at night), both *raw* currents should be close to 0 A (typically within ±0.3 A). Take the mean of a few minutes (the History graph of the *raw* entity, or the smoothed one when it is not near 0) and enter **minus** that value in *PV string 1 zero trim* / *PV string 2 zero trim* in Home Assistant (reading +0.25 A → `-0.25`). No reflashing: the value applies at once and survives reboots. The trim can also be set from an automation with `number.set_value`, for example to recalibrate every night when there is no PV current.
+2. With PV off (or at night), both *raw* currents should be close to 0 A (typically within ±0.3 A). The ESP can calibrate by itself (see "Automatic night calibration" below). Manually: take the mean of a few minutes of *PV string N current calibration raw* (two decimals, no trim applied, so it does not depend on the current trim) and enter **minus** that value in *PV string 1 zero trim* / *PV string 2 zero trim* in Home Assistant (reading +0.25 A → `-0.25`) and set *PV zero calibration source* to *Manual*. No reflashing: the value applies at once and survives reboots.
 3. Switch PV on in daylight. Both strings should read a positive current of similar size; their sum should be close to the inverter's PV current and to a clamp meter on the common PV+ cable.
 4. A negative value means the sensor is reversed: turn it over (PV off first).
+
+### Automatic night calibration (on the ESP, no Home Assistant setup)
+
+The offset of an open-loop Hall sensor drifts with temperature, so the package recalibrates the zero by itself every night, when no PV current flows:
+
+```text
+window start  -> clear sums
+every 5 s     -> add "PV string N current calibration raw" (no trim, 2 decimals)
+window end    -> mean OK?  -> night zero trim = -mean   (written to the number entity, kept over reboots)
+                 else      -> trim unchanged, the reason is in "PV zero calibration status"
+```
+
+| Entity (device of the ESP32) | Meaning |
+|---|---|
+| PV zero calibration start hour / end hour (config) | window in local time of Home Assistant, in whole hours, default 2 → 4. May wrap over midnight (23 → 3). Settable from Home Assistant, kept over reboots |
+| PV zero calibration source (select, config) | which zero is added to the currents: **Off** (no zero correction), **Night (automatic)** (the *night zero trim* values written by the calibration) or **Manual** (the *zero trim* values you entered; default). The night values are computed every night whatever is selected, so you can compare them and switch |
+| PV zero calibration status (diagnostic) | text after each window, e.g. `04:00 \| string 1: stored, mean -0.12 A, n=1440, spread 0.21 A \| string 2: …` |
+
+The night trim is **not** stored (and the status says why) when: fewer than 60 values were collected (`too few values`, e.g. after a reboot in the middle of the window), `|mean| > calib_max_offset` (`offset too large`, default 1 A), or `max − min > calib_max_spread` (`unstable`, default 0.6 A; some current is flowing, for example dawn). Choose hours when the PV is certainly dark. The clock comes from Home Assistant (time component `pv_calib_time`, platform `homeassistant`, with Home Assistant's time zone); nothing is calibrated before the clock is synchronised. The first window after flashing starts at the next start hour, so to calibrate at once do the manual step 2. Your manual numbers are never overwritten by the automatic calibration.
 
 ## 7. Troubleshooting
 
