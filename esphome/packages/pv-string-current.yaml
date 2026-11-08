@@ -25,10 +25,12 @@ substitutions:
   # Which zero is used is chosen with the select "PV zero calibration source".
   string1_zero_trim: "0.0"
   string2_zero_trim: "0.0"
-  # How often values are sent to Home Assistant (readings are taken every
-  # 250 ms and averaged over the interval). avg_send_interval >= raw_send_interval.
-  raw_send_interval: 1s   # "... current raw" sensors
-  avg_send_interval: 60s  # smoothed "... current" sensors
+  # Initial values (seconds) of the numbers "PV raw send interval" and "PV
+  # smoothed send interval" (how often values are sent to Home Assistant; the
+  # 250 ms readings are averaged over the interval). Afterwards they are changed
+  # in Home Assistant and stored on the ESP.
+  raw_send_seconds: "1"    # "... current raw" sensors
+  avg_send_seconds: "60"   # smoothed "... current" sensors
   # Automatic night zero calibration (runs on the ESP). The hours are local
   # time of Home Assistant and are only the initial values of the numbers
   # "PV zero calibration start hour" / "... end hour".
@@ -36,7 +38,7 @@ substitutions:
   calib_end_hour: "4"
   # Safety: the night mean is NOT stored when |mean| > calib_max_offset (A) or
   # when max - min of the 5 s values in the window > calib_max_spread (A)
-  # (some current is flowing, e.g. dawn) or when fewer than 60 values exist.
+  # (some current is flowing, e.g. dawn) or when fewer than 10 values exist.
   calib_max_offset: "1.0"
   calib_max_spread: "0.6"
 
@@ -67,82 +69,103 @@ sensor:
           window_size: 10
           send_every: 10
 
-  # Owner's naming convention: "<name> raw" = short mean (raw_send_interval, for
-  # the live view; exclude *_raw from the recorder), plain name = longer mean
-  # (avg_send_interval) with negative values shown as 0.
+  # Hall voltages: internal, read every 250 ms. Each reading is converted to a
+  # current WITHOUT zero trim and added to two accumulators: "fast" (the raw and
+  # calibration sensors) and "slow" (the smoothed sensors). The 1 s interval
+  # below publishes the means, so the send intervals can be changed at run time.
   - platform: ads1115
     ads1115_id: ads_hall
-    id: pv_string1_current_raw
-    name: PV string 1 current raw
+    id: hall1_voltage
+    name: PV string 1 Hall voltage
+    internal: true
     multiplexer: A0_GND
     gain: 4.096
     update_interval: 250ms
-    unit_of_measurement: A
-    device_class: current
-    state_class: measurement
-    accuracy_decimals: 1
-    filters:
-      - lambda: |-
-          const float vs = id(hall_supply).state;
-          if (isnan(vs) || vs < 3.0f) return {};
-          // zero source: 0 = off, 1 = night (automatic), 2 = manual
-          float trim = 0.0f;
-          const size_t zmode = id(pv_zero_source).active_index().value_or(2);
-          if (zmode == 1) trim = id(pv_string1_night_trim).state;
-          else if (zmode == 2) trim = id(pv_string1_zero_trim).state;
-          if (isnan(trim)) trim = 0.0f;
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + trim;
-      - throttle_average: ${raw_send_interval}
-      - round: 1
+    on_value:
+      then:
+        - lambda: |-
+            const float vs = id(hall_supply).state;
+            if (isnan(vs) || vs < 3.0f) return;
+            const float a = (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f);
+            id(avg_sum)[0] += a;
+            id(avg_n)[0]++;
+            id(avg_sum)[2] += a;
+            id(avg_n)[2]++;
 
   - platform: ads1115
     ads1115_id: ads_hall
-    id: pv_string2_current_raw
-    name: PV string 2 current raw
+    id: hall2_voltage
+    name: PV string 2 Hall voltage
+    internal: true
     multiplexer: A1_GND
     gain: 4.096
     update_interval: 250ms
+    on_value:
+      then:
+        - lambda: |-
+            const float vs = id(hall_supply).state;
+            if (isnan(vs) || vs < 3.0f) return;
+            const float a = (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f);
+            id(avg_sum)[1] += a;
+            id(avg_n)[1]++;
+            id(avg_sum)[3] += a;
+            id(avg_n)[3]++;
+
+  # Owner's naming convention: "<name> raw" = short mean (every "PV raw send
+  # interval", for the live view; exclude *_raw from the recorder), plain name =
+  # longer mean (every "PV smoothed send interval") with negative values shown
+  # as 0. Average first, clamp after: clipping single samples would bias the
+  # mean upwards around 0 A. The raw sensors stay signed (zero calibration,
+  # sensor direction check). They are published by the 1 s interval below.
+  - platform: template
+    id: pv_string1_current_raw
+    name: PV string 1 current raw
+    update_interval: never
     unit_of_measurement: A
     device_class: current
     state_class: measurement
     accuracy_decimals: 1
-    filters:
-      - lambda: |-
-          const float vs = id(hall_supply).state;
-          if (isnan(vs) || vs < 3.0f) return {};
-          // zero source: 0 = off, 1 = night (automatic), 2 = manual
-          float trim = 0.0f;
-          const size_t zmode = id(pv_zero_source).active_index().value_or(2);
-          if (zmode == 1) trim = id(pv_string2_night_trim).state;
-          else if (zmode == 2) trim = id(pv_string2_zero_trim).state;
-          if (isnan(trim)) trim = 0.0f;
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + trim;
-      - throttle_average: ${raw_send_interval}
-      - round: 1
+
+  - platform: template
+    id: pv_string2_current_raw
+    name: PV string 2 current raw
+    update_interval: never
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    id: pv_string1_current
+    name: PV string 1 current
+    update_interval: never
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    id: pv_string2_current
+    name: PV string 2 current
+    update_interval: never
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
 
   # Calibration sensors: the same measurement WITHOUT the zero trim and with
   # two decimals. With no current through the sensor the mean of this value is
   # the offset to enter (with a minus) in the "zero trim" number. Exclude *_raw
   # from the recorder, see docs/hall-current-sensors.md (night calibration).
-  - platform: ads1115
-    ads1115_id: ads_hall
+  - platform: template
     id: pv_string1_current_calibration_raw
     name: PV string 1 current calibration raw
-    multiplexer: A0_GND
-    gain: 4.096
-    update_interval: 250ms
+    update_interval: never
     unit_of_measurement: A
     device_class: current
     state_class: measurement
     accuracy_decimals: 2
     entity_category: diagnostic
-    filters:
-      - lambda: |-
-          const float vs = id(hall_supply).state;
-          if (isnan(vs) || vs < 3.0f) return {};
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f);
-      - throttle_average: ${raw_send_interval}
-      - round: 2
     on_value:
       then:
         - lambda: |-
@@ -152,25 +175,15 @@ sensor:
             if (x < id(calib_min)[0]) id(calib_min)[0] = x;
             if (x > id(calib_max)[0]) id(calib_max)[0] = x;
 
-  - platform: ads1115
-    ads1115_id: ads_hall
+  - platform: template
     id: pv_string2_current_calibration_raw
     name: PV string 2 current calibration raw
-    multiplexer: A1_GND
-    gain: 4.096
-    update_interval: 250ms
+    update_interval: never
     unit_of_measurement: A
     device_class: current
     state_class: measurement
     accuracy_decimals: 2
     entity_category: diagnostic
-    filters:
-      - lambda: |-
-          const float vs = id(hall_supply).state;
-          if (isnan(vs) || vs < 3.0f) return {};
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f);
-      - throttle_average: ${raw_send_interval}
-      - round: 2
     on_value:
       then:
         - lambda: |-
@@ -179,31 +192,6 @@ sensor:
             id(calib_n)[1]++;
             if (x < id(calib_min)[1]) id(calib_min)[1] = x;
             if (x > id(calib_max)[1]) id(calib_max)[1] = x;
-
-  # Average first, clamp after: clipping single samples would bias the mean
-  # upwards around 0 A. The raw sensors stay signed (zero calibration, sensor
-  # direction check).
-  - platform: copy
-    source_id: pv_string1_current_raw
-    name: PV string 1 current
-    accuracy_decimals: 1
-    filters:
-      - throttle_average: ${avg_send_interval}
-      - lambda: |-
-          if (x < 0.0f) return 0.0f;
-          return x;
-      - round: 1
-
-  - platform: copy
-    source_id: pv_string2_current_raw
-    name: PV string 2 current
-    accuracy_decimals: 1
-    filters:
-      - throttle_average: ${avg_send_interval}
-      - lambda: |-
-          if (x < 0.0f) return 0.0f;
-          return x;
-      - round: 1
 
 # MANUAL zero calibration in A, added to the current when the source is
 # "Manual": with no current through the sensor, set it to minus the reading.
@@ -295,6 +283,34 @@ number:
     restore_value: true
     initial_value: ${calib_end_hour}
 
+  # How often values are sent to Home Assistant, in seconds (changeable at run
+  # time, stored on the ESP). The readings in between are averaged.
+  - platform: template
+    id: pv_raw_interval
+    name: PV raw send interval
+    entity_category: config
+    unit_of_measurement: s
+    min_value: 1
+    max_value: 600
+    step: 1
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${raw_send_seconds}
+
+  - platform: template
+    id: pv_avg_interval
+    name: PV smoothed send interval
+    entity_category: config
+    unit_of_measurement: s
+    min_value: 1
+    max_value: 3600
+    step: 1
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${avg_send_seconds}
+
 # Which zero is added to the current: nothing, the night value or the manual one.
 # The night values are computed every night whatever is selected here.
 select:
@@ -316,9 +332,10 @@ text_sensor:
     name: PV zero calibration status
     entity_category: diagnostic
 
-# Local time for the calibration window (taken from Home Assistant, including
-# its time zone). If your main file already has a time component, this one is
-# an additional one with its own id.
+# Local time for the calibration window (synchronised from Home Assistant; the
+# time zone is set by ESPHome at build time, add `timezone:` if the hours look
+# shifted). If your main file already has a time component, this one is an
+# additional one with its own id.
 time:
   - platform: homeassistant
     id: pv_calib_time
@@ -340,8 +357,73 @@ globals:
     type: float[2]
   - id: calib_max
     type: float[2]
+  # Accumulators of the send intervals: [0,1] fast (strings 1,2), [2,3] slow.
+  - id: avg_sum
+    type: double[4]
+  - id: avg_n
+    type: int[4]
+  - id: avg_last   # millis() of the last publish: [0] fast, [1] slow
+    type: uint32_t[2]
 
 interval:
+  # Publishes the means every "PV raw send interval" / "PV smoothed send interval".
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          float trim[2] = {0.0f, 0.0f};
+          // zero source: 0 = off, 1 = night (automatic), 2 = manual
+          const size_t zmode = id(pv_zero_source).active_index().value_or(2);
+          if (zmode == 1) {
+            trim[0] = id(pv_string1_night_trim).state;
+            trim[1] = id(pv_string2_night_trim).state;
+          } else if (zmode == 2) {
+            trim[0] = id(pv_string1_zero_trim).state;
+            trim[1] = id(pv_string2_zero_trim).state;
+          }
+          for (int i = 0; i < 2; i++)
+            if (isnan(trim[i])) trim[i] = 0.0f;
+          auto round_to = [](float v, float k) {
+            const float r = roundf(v * k) / k;
+            return r == 0.0f ? 0.0f : r;  // no "-0.0"
+          };
+          float raw_s = id(pv_raw_interval).state;
+          float avg_s = id(pv_avg_interval).state;
+          if (isnan(raw_s) || raw_s < 1.0f) raw_s = 1.0f;
+          if (isnan(avg_s) || avg_s < 1.0f) avg_s = 1.0f;
+          if (now - id(avg_last)[0] >= (uint32_t) (raw_s * 1000.0f)) {
+            id(avg_last)[0] = now;
+            if (id(avg_n)[0] > 0) {
+              const float m = id(avg_sum)[0] / id(avg_n)[0];
+              id(pv_string1_current_calibration_raw).publish_state(round_to(m, 100.0f));
+              id(pv_string1_current_raw).publish_state(round_to(m + trim[0], 10.0f));
+            }
+            if (id(avg_n)[1] > 0) {
+              const float m = id(avg_sum)[1] / id(avg_n)[1];
+              id(pv_string2_current_calibration_raw).publish_state(round_to(m, 100.0f));
+              id(pv_string2_current_raw).publish_state(round_to(m + trim[1], 10.0f));
+            }
+            for (int i = 0; i < 2; i++) {
+              id(avg_sum)[i] = 0.0;
+              id(avg_n)[i] = 0;
+            }
+          }
+          if (now - id(avg_last)[1] >= (uint32_t) (avg_s * 1000.0f)) {
+            id(avg_last)[1] = now;
+            if (id(avg_n)[2] > 0) {
+              const float m = id(avg_sum)[2] / id(avg_n)[2] + trim[0];
+              id(pv_string1_current).publish_state(round_to(m < 0.0f ? 0.0f : m, 10.0f));
+            }
+            if (id(avg_n)[3] > 0) {
+              const float m = id(avg_sum)[3] / id(avg_n)[3] + trim[1];
+              id(pv_string2_current).publish_state(round_to(m < 0.0f ? 0.0f : m, 10.0f));
+            }
+            for (int i = 2; i < 4; i++) {
+              id(avg_sum)[i] = 0.0;
+              id(avg_n)[i] = 0;
+            }
+          }
+
   - interval: 60s
     then:
       - lambda: |-
@@ -370,7 +452,7 @@ interval:
               const float mean = n > 0 ? (float) (id(calib_sum)[i] / n) : NAN;
               const float spread = id(calib_max)[i] - id(calib_min)[i];
               const char *res;
-              if (n < 60) {
+              if (n < 10) {
                 res = "too few values";
               } else if (fabsf(mean) > ${calib_max_offset}) {
                 res = "offset too large";

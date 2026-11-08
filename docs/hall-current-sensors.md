@@ -82,18 +82,12 @@ Settings at the top of the package (`substitutions`, override them in the main f
 | `i2c_sda_pin`, `i2c_scl_pin` | `GPIO21`, `GPIO22` | I²C pins |
 | `hall_sensitivity` | `0.0208333` | V per ampere at 3.3 V supply (0.625 V / 30 A) |
 | `string1_zero_trim`, `string2_zero_trim` | `0.0` | initial **manual** zero calibration in amperes; used only until you set a value in Home Assistant (see the *zero trim* entities, step 6) |
-| `raw_send_interval` | `1s` | how often the *raw* entities are sent to Home Assistant (mean of the 250 ms readings in that interval) |
-| `avg_send_interval` | `60s` | how often the smoothed entities are sent (keep it ≥ `raw_send_interval`) |
+| `raw_send_seconds` | `1` | initial value (seconds) of the number *PV raw send interval* |
+| `avg_send_seconds` | `60` | initial value (seconds) of the number *PV smoothed send interval* |
 | `calib_start_hour`, `calib_end_hour` | `2`, `4` | initial window of the automatic night calibration (step 6); later set in Home Assistant |
 | `calib_max_offset`, `calib_max_spread` | `1.0`, `0.6` | A; a night mean above this offset or with a larger max−min spread is not stored |
 
-Example for fewer updates (raw every 5 s, smoothed every 5 min), in the main file:
-
-```yaml
-substitutions:
-  raw_send_interval: 5s
-  avg_send_interval: 300s
-```
+The send intervals are changed **at run time in Home Assistant** with the numbers *PV raw send interval* (1–600 s, default 1) and *PV smoothed send interval* (1–3600 s, default 60); they are stored on the ESP and the substitutions above only set the first value after flashing. The 250 ms readings are averaged over each interval, so a longer interval means less traffic and a smoother value, not a lost sample. (The older substitutions `raw_send_interval` / `avg_send_interval` no longer exist; delete them from your main file, they are ignored.)
 
 ## 5. Entities in Home Assistant
 
@@ -101,11 +95,12 @@ The entities belong to the ESP32's ESPHome device (not to the Voltronic integrat
 
 | Entity | Unit | Update | Source |
 |---|---|---|---|
-| PV string 1 current raw | A, one decimal, can be negative | every `raw_send_interval` (default 1 s; mean of the 250 ms readings) | A0 |
-| PV string 2 current raw | A, one decimal, can be negative | every `raw_send_interval` | A1 |
-| PV string 1 current | A, one decimal, never negative (negative = 0) | every `avg_send_interval` (default 60 s), mean of the raw values | copy of the raw sensor |
-| PV string 2 current | A, one decimal, never negative | every `avg_send_interval` | copy of the raw sensor |
-| PV string 1 current calibration raw, PV string 2 current calibration raw (diagnostic) | A, **two decimals, no zero trim** | every `raw_send_interval` | A0 / A1 (a second reading of the same channel); for calibration only, exclude `*_raw` from the recorder |
+| PV string 1 current raw | A, one decimal, can be negative | every *PV raw send interval* (default 1 s; mean of the 250 ms readings) | A0 |
+| PV string 2 current raw | A, one decimal, can be negative | every *PV raw send interval* | A1 |
+| PV string 1 current | A, one decimal, never negative (negative = 0) | every *PV smoothed send interval* (default 60 s), mean of the 250 ms readings | A0 |
+| PV string 2 current | A, one decimal, never negative | every *PV smoothed send interval* | A1 |
+| PV string 1 current calibration raw, PV string 2 current calibration raw (diagnostic) | A, **two decimals, no zero trim** | every *PV raw send interval* | A0 / A1; for calibration only, exclude `*_raw` from the recorder |
+| PV raw send interval, PV smoothed send interval (config) | s | editable, stored on the ESP | how often the values above are sent to Home Assistant |
 | PV string 1 zero trim, PV string 2 zero trim (config) | A | editable, stored on the ESP | the **manual** zero, used when the source is *Manual* (step 6) |
 | PV string 1 night zero trim, PV string 2 night zero trim (config) | A | written by the night calibration, also editable | used when the source is *Night (automatic)* (step 6) |
 | PV zero calibration source (select, config) | Off / Night (automatic) / Manual | stored on the ESP, default *Manual* | which zero is added to the currents (step 6) |
@@ -163,7 +158,7 @@ window end    -> mean OK?  -> night zero trim = -mean   (written to the number e
 | PV zero calibration source (select, config) | which zero is added to the currents: **Off** (no zero correction), **Night (automatic)** (the *night zero trim* values written by the calibration) or **Manual** (the *zero trim* values you entered; default). The night values are computed every night whatever is selected, so you can compare them and switch |
 | PV zero calibration status (diagnostic) | text after each window, e.g. `04:00 \| string 1: stored, mean -0.12 A, n=1440, spread 0.21 A \| string 2: …` |
 
-The night trim is **not** stored (and the status says why) when: fewer than 60 values were collected (`too few values`, e.g. after a reboot in the middle of the window), `|mean| > calib_max_offset` (`offset too large`, default 1 A), or `max − min > calib_max_spread` (`unstable`, default 0.6 A; some current is flowing, for example dawn). Choose hours when the PV is certainly dark. The clock comes from Home Assistant (time component `pv_calib_time`, platform `homeassistant`, with Home Assistant's time zone); nothing is calibrated before the clock is synchronised. The first window after flashing starts at the next start hour, so to calibrate at once do the manual step 2. Your manual numbers are never overwritten by the automatic calibration.
+The night trim is **not** stored (and the status says why) when: fewer than 10 values were collected (`too few values`, e.g. after a reboot in the middle of the window), `|mean| > calib_max_offset` (`offset too large`, default 1 A), or `max − min > calib_max_spread` (`unstable`, default 0.6 A; some current is flowing, for example dawn). Choose hours when the PV is certainly dark. The clock comes from Home Assistant (time component `pv_calib_time`, platform `homeassistant`, time zone set by ESPHome when the firmware is built, in the ESPHome add-on that is Home Assistant's; if the hours look shifted, add `timezone:` to a `time:` component in your main file); nothing is calibrated before the clock is synchronised. The first window after flashing starts at the next start hour, so to calibrate at once do the manual step 2. Your manual numbers are never overwritten by the automatic calibration.
 
 ## 7. Troubleshooting
 

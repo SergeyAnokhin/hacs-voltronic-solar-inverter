@@ -1,0 +1,112 @@
+# All read entities of the `voltronic` component (opt-in package).
+#
+# The hub itself (`voltronic:` with `uart_id`) and the `external_components:` entry stay in
+# your device YAML; see docs/esphome-voltronic-component.md. This package only lists the
+# entities, so it works with any UART id. Remove lines you do not want: a command is polled
+# only when at least one of its entities is listed (every command costs 0.2-0.7 s on the
+# 2400 baud line). H-dialect entities (grid_power, pv_energy_*, temperatures, schedules, clock)
+# are skipped automatically when the inverter does not answer QPRTL.
+#
+# READ-ONLY: this component sends no setting commands.
+
+sensor:
+  - platform: voltronic
+    # QPIGS (fast)
+    grid_voltage: { name: Grid voltage }
+    grid_frequency: { name: Grid frequency }
+    ac_output_voltage: { name: AC output voltage }
+    ac_output_frequency: { name: AC output frequency }
+    ac_output_apparent_power: { name: AC output apparent power }
+    ac_output_active_power: { name: Load power }
+    output_load_percent: { name: Output load }
+    bus_voltage: { name: Bus voltage }
+    battery_voltage: { name: Battery voltage }
+    battery_charging_current: { name: Battery charge current }
+    battery_discharge_current: { name: Battery discharge current }
+    battery_power: { name: Battery power }   # + = charging
+    battery_capacity_percent: { name: Battery estimate (voltage based) }   # NOT a state of charge
+    heat_sink_temperature: { name: Heat sink temperature }
+    pv_input_voltage: { name: PV voltage }
+    pv_input_current: { name: PV current }
+    pv_charging_power: { name: PV power }
+    battery_voltage_scc: { name: SCC battery voltage }
+    # HGRID (fast, H dialect)
+    grid_power: { name: Grid power }   # + = import
+    # QPIRI (slow): ratings and the settings the LCD shows
+    battery_recharge_voltage: { name: Back-to-grid voltage (P12) }
+    battery_redischarge_voltage: { name: Back-to-battery voltage (P13) }
+    battery_under_voltage: { name: Low DC cut-off voltage (P29) }
+    battery_bulk_voltage: { name: Bulk voltage (P26) }
+    battery_float_voltage: { name: Float voltage (P27) }
+    max_ac_charging_current: { name: Max utility charge current (P11) }
+    max_charging_current: { name: Max charge current (P02) }
+    battery_rating_voltage: { name: Battery rating voltage }
+    ac_output_rating_active_power: { name: Rated output power }
+    # QBEQI (slow)
+    equalization_voltage: { name: Equalization voltage (P31) }
+    equalization_time: { name: Equalization time (P33) }
+    equalization_timeout: { name: Equalization timeout (P34) }
+    equalization_interval: { name: Equalization interval (P35) }
+    # HGEN (slow, H dialect): the inverter's own PV energy counters
+    pv_energy_today: { name: PV energy today }
+    pv_energy_month: { name: PV energy this month }
+    pv_energy_year: { name: PV energy this year }
+    pv_energy_total: { name: PV energy total }
+    # HTEMP (slow, H dialect)
+    inverter_temperature: { name: Inverter temperature }
+    transformer_temperature: { name: Transformer temperature }
+    pv_temperature: { name: PV temperature }
+    fan_1_speed: { name: Fan 1 speed }
+    fan_2_speed: { name: Fan 2 speed }
+    # HEEP1 / HEEP2 (slow, H dialect)
+    battery_low_alarm_voltage: { name: Battery low alarm voltage (P24) }
+    ac_charger_start_hour: { name: AC charger start hour (P46) }
+    ac_charger_stop_hour: { name: AC charger stop hour (P47) }
+    ac_output_on_hour: { name: AC output on hour (P48) }
+    ac_output_off_hour: { name: AC output off hour (P49) }
+
+binary_sensor:
+  - platform: voltronic
+    load_status: { name: Load on }
+    charging_status: { name: Charging }
+    scc_charging_status: { name: Solar charging }
+    ac_charging_status: { name: AC charging }
+    switch_on: { name: AC output switched on }
+    ac_output_active: { name: AC output active }
+    charging_to_float: { name: Charging to float }
+    warnings_present: { name: Warning present }
+    faults_present: { name: Fault present }
+    alarm_line_fail: { name: Grid lost }
+    alarm_battery_low_alarm: { name: Battery low }
+    alarm_battery_under_shutdown: { name: Battery under-voltage shutdown }
+    alarm_overload: { name: Overload }
+    alarm_over_temperature: { name: Over temperature }
+    alarm_inverter_fault: { name: Inverter fault }
+    # QFLAG options
+    buzzer: { name: Buzzer (P18) }
+    backlight: { name: Backlight (P20) }
+    overload_restart: { name: Overload auto-restart (P06) }
+    over_temperature_restart: { name: Over-temperature auto-restart (P07) }
+    power_saving: { name: Power saving (P08) }
+    overload_bypass: { name: Overload bypass (P23) }
+    lcd_return_to_default: { name: Return to default screen (P19) }
+    primary_source_interrupt_alarm: { name: Beep on source loss (P22) }
+    fault_code_record: { name: Record fault codes (P25) }
+    equalization_enabled: { name: Equalization enabled (P30) }
+    equalization_active: { name: Equalization active }
+
+text_sensor:
+  - platform: voltronic
+    device_mode: { name: Operating mode }
+    output_source_priority: { name: Output source priority (P01) }
+    charger_source_priority: { name: Charger source priority (P16) }
+    solar_supply_priority: { name: Solar supply priority (P43) }   # H dialect
+    battery_type: { name: Battery type (P05) }
+    input_voltage_range: { name: Input voltage range (P03) }
+    charge_stage: { name: Charge stage }
+    inverter_clock: { name: Inverter clock }   # H dialect, YYMMDD HH:MM
+    model: { name: Model }
+    serial_number: { name: Serial number }
+    firmware_version: { name: Firmware version }
+    firmware_date: { name: Firmware date }   # H dialect
+    protocol_id: { name: Protocol }
