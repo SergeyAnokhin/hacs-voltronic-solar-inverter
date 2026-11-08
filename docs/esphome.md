@@ -12,6 +12,8 @@ The inverter's RS232 port can also be read by an ESP32 running ESPHome, connecte
 | Writes | opt-in package [`packages/vevor-controls.yaml`](../esphome/packages/vevor-controls.yaml) | the integration: always on (README caution) |
 | Extra component | none (core ESPHome) | [`oxan/esphome-stream-server`](https://github.com/oxan/esphome-stream-server) (external) |
 
+**Third configuration, stage 1 implemented:** the own `voltronic` component reads both dialects (all sensors of the HACS integration except the derived ones) and replaces `pipsolar` on the native path: [esphome-voltronic-component.md](esphome-voltronic-component.md). Read-only for now.
+
 Plan for a native config that does **everything** the integration does (own component, both dialects, derived values, controls): [esphome-full-control.md](esphome-full-control.md) (specification only, not implemented).
 
 A third option is the external [solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome) component (H dialect, energy counters, beta writes). It was built on a 48 V PowMr VMII-6200; its write value ranges are for 48 V, so it is not configured here.
