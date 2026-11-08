@@ -2,7 +2,8 @@
 # cables of the two PV strings, read through an ADS1115 16-bit ADC on I2C.
 # Read-only: it does not talk to the inverter at all.
 #
-# Add it to vevor-bridge.yaml, vevor-inverter.yaml or any ESP32 config:
+# Add it to vevor-bridge.yaml, vevor-inverter.yaml or any ESP32 config (copy
+# this file to /config/esphome/packages/, or use a git "url:" package):
 #
 #   packages:
 #     pv_current: !include packages/pv-string-current.yaml
@@ -19,9 +20,14 @@ substitutions:
   i2c_scl_pin: GPIO22
   # 0.625 V per 30 A at 3.3 V supply (sensor label "30A 1.65V 0.625V PWR3.3V").
   hall_sensitivity: "0.0208333"  # V per A
-  # Zero calibration in A: with PV switched off, set to minus the reading.
+  # Initial zero calibration in A (used only until a value is set in Home
+  # Assistant; afterwards the "zero trim" number entities are stored on the ESP).
   string1_zero_trim: "0.0"
   string2_zero_trim: "0.0"
+  # How often values are sent to Home Assistant (readings are taken every
+  # 250 ms and averaged over the interval). avg_send_interval >= raw_send_interval.
+  raw_send_interval: 1s   # "... current raw" sensors
+  avg_send_interval: 60s  # smoothed "... current" sensors
 
 i2c:
   id: i2c_hall
@@ -45,12 +51,14 @@ sensor:
     entity_category: diagnostic
     update_interval: 1s
     filters:
+      # 10 s mean: the supply is stable, no need to send it every second.
       - sliding_window_moving_average:
-          window_size: 5
-          send_every: 1
+          window_size: 10
+          send_every: 10
 
-  # Owner's naming convention: "<name> raw" = every sample (1 s, for the live
-  # view; exclude *_raw from the recorder), plain name = 60 s mean.
+  # Owner's naming convention: "<name> raw" = short mean (raw_send_interval, for
+  # the live view; exclude *_raw from the recorder), plain name = longer mean
+  # (avg_send_interval) with negative values shown as 0.
   - platform: ads1115
     ads1115_id: ads_hall
     id: pv_string1_current_raw
@@ -61,15 +69,16 @@ sensor:
     unit_of_measurement: A
     device_class: current
     state_class: measurement
-    accuracy_decimals: 2
+    accuracy_decimals: 1
     filters:
       - lambda: |-
           const float vs = id(hall_supply).state;
           if (isnan(vs) || vs < 3.0f) return {};
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + ${string1_zero_trim};
-      - sliding_window_moving_average:
-          window_size: 4
-          send_every: 4
+          float trim = id(pv_string1_zero_trim).state;
+          if (isnan(trim)) trim = 0.0f;
+          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + trim;
+      - throttle_average: ${raw_send_interval}
+      - round: 1
 
   - platform: ads1115
     ads1115_id: ads_hall
@@ -81,24 +90,70 @@ sensor:
     unit_of_measurement: A
     device_class: current
     state_class: measurement
-    accuracy_decimals: 2
+    accuracy_decimals: 1
     filters:
       - lambda: |-
           const float vs = id(hall_supply).state;
           if (isnan(vs) || vs < 3.0f) return {};
-          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + ${string2_zero_trim};
-      - sliding_window_moving_average:
-          window_size: 4
-          send_every: 4
+          float trim = id(pv_string2_zero_trim).state;
+          if (isnan(trim)) trim = 0.0f;
+          return (x - vs / 2.0f) / (${hall_sensitivity} * vs / 3.3f) + trim;
+      - throttle_average: ${raw_send_interval}
+      - round: 1
 
+  # Average first, clamp after: clipping single samples would bias the mean
+  # upwards around 0 A. The raw sensors stay signed (zero calibration, sensor
+  # direction check).
   - platform: copy
     source_id: pv_string1_current_raw
     name: PV string 1 current
+    accuracy_decimals: 1
     filters:
-      - throttle_average: 60s
+      - throttle_average: ${avg_send_interval}
+      - lambda: |-
+          if (x < 0.0f) return 0.0f;
+          return x;
+      - round: 1
 
   - platform: copy
     source_id: pv_string2_current_raw
     name: PV string 2 current
+    accuracy_decimals: 1
     filters:
-      - throttle_average: 60s
+      - throttle_average: ${avg_send_interval}
+      - lambda: |-
+          if (x < 0.0f) return 0.0f;
+          return x;
+      - round: 1
+
+# Zero calibration in A, added to the current: with no current through the
+# sensor, set it to minus the reading. Editable from Home Assistant (also from
+# an automation with number.set_value); kept across reboots on the ESP.
+number:
+  - platform: template
+    id: pv_string1_zero_trim
+    name: PV string 1 zero trim
+    entity_category: config
+    unit_of_measurement: A
+    device_class: current
+    min_value: -3.0
+    max_value: 3.0
+    step: 0.01
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${string1_zero_trim}
+
+  - platform: template
+    id: pv_string2_zero_trim
+    name: PV string 2 zero trim
+    entity_category: config
+    unit_of_measurement: A
+    device_class: current
+    min_value: -3.0
+    max_value: 3.0
+    step: 0.01
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${string2_zero_trim}

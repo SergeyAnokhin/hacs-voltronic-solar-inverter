@@ -1,6 +1,6 @@
 # Build guide: PV string current with Hall sensors + ADS1115 on the ESP32
 
-This guide adds two Hall-effect current sensors to the ESP32 from [esphome-hardware.md](esphome-hardware.md), one on each PV string, so Home Assistant shows the current of every string in real time. The PV+ cable of each string passes through the hole of a **QNHCK2-16** sensor (30 A, 3.3 V supply); there is no electrical contact with the PV circuit. The sensors give an analog voltage, which an **ADS1115** 16-bit ADC converts and sends to the ESP32 over I²C. The firmware is the ESPHome package [`esphome/packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml), which can be added to either ESP32 config. It only reads the sensors and never talks to the inverter. The hardware has **not yet been built or tested**; the package passes `esphome config` (ESPHome 2026.9.1) but has not been compiled.
+This guide adds two Hall-effect current sensors to the ESP32 from [esphome-hardware.md](esphome-hardware.md), one on each PV string, so Home Assistant shows the current of every string in real time. The PV+ cable of each string passes through the hole of a **QNHCK2-16** sensor (30 A, 3.3 V supply); there is no electrical contact with the PV circuit. The sensors give an analog voltage, which an **ADS1115** 16-bit ADC converts and sends to the ESP32 over I²C. The firmware is the ESPHome package [`esphome/packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml), which can be added to either ESP32 config. It only reads the sensors and never talks to the inverter. The owner has built the hardware; with no cable in the holes the readings sit within about ±0.3 A of zero (normal offset of an open-loop sensor, removed by the zero trim in step 6). Not yet tested with PV current. The package passes `esphome config` (ESPHome 2026.10.2) but has not been compiled by the agent.
 
 ![Wiring of two Hall sensors, ADS1115 and ESP32](images/hall-sensors-wiring.svg)
 
@@ -81,7 +81,17 @@ Settings at the top of the package (`substitutions`, override them in the main f
 |---|---|---|
 | `i2c_sda_pin`, `i2c_scl_pin` | `GPIO21`, `GPIO22` | I²C pins |
 | `hall_sensitivity` | `0.0208333` | V per ampere at 3.3 V supply (0.625 V / 30 A) |
-| `string1_zero_trim`, `string2_zero_trim` | `0.0` | zero calibration in amperes (step 6) |
+| `string1_zero_trim`, `string2_zero_trim` | `0.0` | initial zero calibration in amperes; used only until you set a value in Home Assistant (see the *zero trim* entities, step 6) |
+| `raw_send_interval` | `1s` | how often the *raw* entities are sent to Home Assistant (mean of the 250 ms readings in that interval) |
+| `avg_send_interval` | `60s` | how often the smoothed entities are sent (keep it ≥ `raw_send_interval`) |
+
+Example for fewer updates (raw every 5 s, smoothed every 5 min), in the main file:
+
+```yaml
+substitutions:
+  raw_send_interval: 5s
+  avg_send_interval: 300s
+```
 
 ## 5. Entities in Home Assistant
 
@@ -89,11 +99,14 @@ The entities belong to the ESP32's ESPHome device (not to the Voltronic integrat
 
 | Entity | Unit | Update | Source |
 |---|---|---|---|
-| PV string 1 current raw | A | every 1 s (mean of 4 readings at 250 ms) | A0 |
-| PV string 2 current raw | A | every 1 s | A1 |
-| PV string 1 current | A | 60 s mean, every 60 s | copy of the raw sensor |
-| PV string 2 current | A | 60 s mean, every 60 s | copy of the raw sensor |
-| Hall sensor supply (diagnostic) | V | every 1 s (5-sample mean) | A2 |
+| PV string 1 current raw | A, one decimal, can be negative | every `raw_send_interval` (default 1 s; mean of the 250 ms readings) | A0 |
+| PV string 2 current raw | A, one decimal, can be negative | every `raw_send_interval` | A1 |
+| PV string 1 current | A, one decimal, never negative (negative = 0) | every `avg_send_interval` (default 60 s), mean of the raw values | copy of the raw sensor |
+| PV string 2 current | A, one decimal, never negative | every `avg_send_interval` | copy of the raw sensor |
+| PV string 1 zero trim, PV string 2 zero trim (config) | A | editable, stored on the ESP | see step 6 |
+| Hall sensor supply (diagnostic) | V | every 10 s (10-sample mean) | A2 |
+
+The smoothed entities are averaged first and clipped at 0 afterwards (clipping single samples would bias the mean upwards around 0 A). The raw entities stay signed on purpose: you need the sign for the zero calibration and to see a reversed sensor (the smoothed entity then just shows 0).
 
 ### Combining with the integration's data
 
@@ -123,7 +136,7 @@ The total can be compared with the integration's *PV current* (`QPIGS[12]`) and 
 ## 6. First test and zero calibration
 
 1. Power the ESP32 with the PV isolator **off**. In the log (`esphome logs …`) the ADS1115 is found at `0x48`; *Hall sensor supply* reads about 3.3 V.
-2. With PV off, both *raw* currents should be close to 0 A (typically within ±0.3 A). Note the mean of a few minutes, then set `string1_zero_trim` / `string2_zero_trim` to **minus** that value (reading +0.25 A → `-0.25`) and flash again.
+2. With PV off (or at night), both *raw* currents should be close to 0 A (typically within ±0.3 A). Take the mean of a few minutes (the History graph of the *raw* entity, or the smoothed one when it is not near 0) and enter **minus** that value in *PV string 1 zero trim* / *PV string 2 zero trim* in Home Assistant (reading +0.25 A → `-0.25`). No reflashing: the value applies at once and survives reboots. The trim can also be set from an automation with `number.set_value`, for example to recalibrate every night when there is no PV current.
 3. Switch PV on in daylight. Both strings should read a positive current of similar size; their sum should be close to the inverter's PV current and to a clamp meter on the common PV+ cable.
 4. A negative value means the sensor is reversed: turn it over (PV off first).
 
