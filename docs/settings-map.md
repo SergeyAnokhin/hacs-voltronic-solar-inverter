@@ -68,7 +68,7 @@ Confidence of the read position: **V** = verified here by a change (owner change
 | P65 Second-output discharge time (disable / 0–990 min) | 0 (= disable?) | `HEEP2[16]` chars 2–4 | M (vendor tool) | `PDDCGT<nnnn>` (4 digits, vendor tool); remote-panel spec `PTOPD<nnn>` | Tool / spec; Ref portal: not supported |
 | P66 Recover delay | 5 min | `HEEP2[13]` | M | `PDDLYT<nnn>` (5-min steps; Ref NAK on 4 and 6) | Ref |
 | P67 / P68 Output open / stop time (0–23 h) | 00–00 (app "INV Dual Output Time") | `HEEP2[14]` | M (format like `HEEP2[12]`) | no setter in the vendor tool; remote-panel spec `PTOPS<mm nn>` (untested) | Spec |
-| Relay on/off (live) | on in mode L with P60 on; off in mode S | `HSTS[2]` char 4 (1 = on) | **V** (`PDAULON00` changed it 1 → 0, 2026-11-12; the off → on step is still to run) | `PDAULON00` off / `PDAULON01` on (vendor tool "auxiliary output off / on"); remote-panel spec `PTOPE<n>` | Tool / spec |
+| Relay on/off (live) | on in mode L with P60 on; off in mode S | `HSTS[2]` char 4 (1 = on) | **V** (both directions: `PDAULON00` 1 → 0 and `PDAULON01` 0 → 1, mode L, 2026-11-12) | `PDAULON00` off / `PDAULON01` on (vendor tool "auxiliary output off / on"); remote-panel spec `PTOPE<n>` | Tool / spec |
 
 ## In the Home Assistant integration (0.2.0; extended 2026-11-12)
 
@@ -126,7 +126,7 @@ The manufacturer's service tool ([zhuaibai/TQF-AllInOne](https://github.com/zhua
 | `^S???ACLT11-19`, `^S???ACLT12-18` (HA numbers) | **no answer at all** within 2 s, nothing changed on the LCD. The frame is built like the dongle's verified `^S???DAT` frame (CRC checked) |
 | `write_probe.py --try ACLT 12 18` and `--try ACCT 1 2` (4 variants each, 8 s wait) | **all 8 silent**; `HEEP2` unchanged. The firmware does not know these commands in any form tried. Details and untried ideas: [research-summary.md](research-summary.md#research-log-2026-11-12-how-the-findings-were-made-results-failures) |
 | `PDAULON01` / `PDAULON00` via `write_probe.py` | `(ACK` in 0.15 s each, **no token changed** in `HSTS HEEP1 HEEP2 HGEN QMOD`, both with the dual output off and, after `PDAULC01` (P60 on), still in mode S: effect and read-back unknown. To test with the main output on |
-| `PDAULON00` via `write_probe.py`, **mode L**, P60 on | `(ACK`; **`HSTS[2]` char 4 `1` → `0`**: `PDAULON00` switches the second output off and `HSTS[2]` char 4 is the read-back. (The second output was already on before `PDAULON01`, so `PDAULON01` showed no change.) HA reads it since 0.4.18 (unreleased), the switch is no longer an assumed state |
+| `PDAULON00` via `write_probe.py`, **mode L**, P60 on | `(ACK`; **`HSTS[2]` char 4 `1` → `0`**: `PDAULON00` switches the second output off and `HSTS[2]` char 4 is the read-back. (The second output was already on before `PDAULON01`, so `PDAULON01` showed no change.) HA reads it since 0.4.18, the switch is no longer an assumed state. Later run: `PDAULON00` 1 → 0 and `PDAULON01` 0 → 1 both confirmed; one earlier run found the value back at `1` after an `OFF` without a known cause (self-restore not excluded) |
 | `PDAULC01` via `write_probe.py` | `(ACK`, `HEEP2[0]` 0 → 1: **works, `PDAULC` = P60** |
 
 ## Writing the schedules (P46–P49): candidate found 2026-11-12
