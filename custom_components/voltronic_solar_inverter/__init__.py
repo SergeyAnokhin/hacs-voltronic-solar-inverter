@@ -29,6 +29,7 @@ from .protocol import InverterClient, InverterError
 # number/select/switch send setting commands (always set up; changes are at the user's risk).
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,

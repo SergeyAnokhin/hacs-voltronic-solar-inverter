@@ -236,6 +236,20 @@ def test_write_unexpected_answer():
         run(make_client(gw).write(commands.set_flag("backlight", True)))
 
 
+def test_write_schedule_accepts_pi18_style_answers():
+    for answer in (b"^1\r", b"^1" + crc_bytes(b"^1") + b"\r"):
+        gw = FakeGateway(lambda frame, answer=answer: [answer])
+        run(make_client(gw).write(commands.set_schedule("ac_output", 12, 20)))
+        assert gw.sent == [encode_frame("^S???ACLT12-20")]
+
+
+def test_write_schedule_refused():
+    gw = FakeGateway(lambda frame: [b"^0\r"])
+    with pytest.raises(InverterNakError):
+        run(make_client(gw).write(commands.set_schedule("ac_charger", 1, 2)))
+    assert gw.sent == [encode_frame("^S???ACCT01-02")]
+
+
 def test_write_accepts_only_write_commands():
     gw = FakeGateway(lambda frame: [reply("ACK")])
     with pytest.raises(InvalidCommandError):

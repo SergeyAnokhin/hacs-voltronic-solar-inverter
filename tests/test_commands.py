@@ -216,3 +216,145 @@ def test_max_discharging_current_frame(amps, text):
 def test_max_discharging_current_rejects(amps):
     with pytest.raises(InvalidCommandError):
         commands.set_max_discharging_current(amps)
+
+
+@pytest.mark.parametrize(
+    ("kind", "start", "end", "text"),
+    [
+        ("ac_output", 12, 20, "^S???ACLT12-20"),
+        ("ac_output", 23, 0, "^S???ACLT23-00"),
+        ("ac_charger", 1, 2, "^S???ACCT01-02"),
+        ("ac_charger", 0, 23, "^S???ACCT00-23"),
+    ],
+)
+def test_schedule_frames(kind, start, end, text):
+    assert commands.set_schedule(kind, start, end).text == text
+
+
+def test_schedule_frame_bytes():
+    # Frame bytes worked out from the service tool's format (CRC-16/XMODEM, three literal "?").
+    assert commands.set_schedule("ac_output", 12, 20).frame == bytes.fromhex(
+        "5e533f3f3f41434c5431322d3230ce290d"
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "start", "end"),
+    [
+        ("dual_output", 1, 2),
+        (None, 1, 2),
+        ("ac_output", 24, 1),
+        ("ac_output", 1, -1),
+        ("ac_output", True, 2),
+        ("ac_output", 1.0, 2),
+        ("ac_output", "01", 2),
+    ],
+)
+def test_schedule_rejects(kind, start, end):
+    with pytest.raises(InvalidCommandError):
+        commands.set_schedule(kind, start, end)
+
+
+@pytest.mark.parametrize(
+    ("key", "volts", "text"),
+    [
+        ("battery_low_alarm_voltage", 23.6, "PSLV23.6"),
+        ("battery_low_alarm_voltage", 20, "PSLV20.0"),
+        ("battery_low_alarm_voltage", 27.0, "PSLV27.0"),
+        ("second_output_cutoff_voltage", 22.0, "PDSDV22.0"),
+        ("second_output_recover_voltage", 26.0, "PDSRV26.0"),
+    ],
+)
+def test_heep_voltage_frames(key, volts, text):
+    assert commands.set_heep_voltage(key, volts).text == text
+
+
+@pytest.mark.parametrize(
+    ("key", "volts"),
+    [
+        ("battery_low_alarm_voltage", 19.9),
+        ("battery_low_alarm_voltage", 27.1),
+        ("battery_low_alarm_voltage", 23.65),
+        ("second_output_cutoff_voltage", 31),
+        ("battery_bulk_voltage", 28.2),  # not an EEPROM voltage setting
+        ("second_output_recover_voltage", "26.0"),
+        ("second_output_recover_voltage", True),
+    ],
+)
+def test_heep_voltage_rejects(key, volts):
+    with pytest.raises(InvalidCommandError):
+        commands.set_heep_voltage(key, volts)
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "text"),
+    [
+        ("bms_lock_soc", 20, "BMSSDC020"),
+        ("bms_back_to_ac_soc", 100, "BMSB2UC100"),
+        ("bms_back_to_battery_soc", 95, "BMSU2BC095"),
+        ("bms_restart_soc", 0, "BMSSRC000"),
+        ("second_output_cutoff_soc", 20, "PDSDS020"),
+        ("second_output_recover_soc", 50, "PDSRS050"),
+        ("second_output_recover_delay", 5, "PDDLYT005"),
+        ("second_output_recover_delay", 60, "PDDLYT060"),
+        ("second_output_discharge_time", 0, "PDDCGT0000"),
+        ("second_output_discharge_time", 990, "PDDCGT0990"),
+        ("battery_discharge_current_limit", 80, "DISCC080"),
+    ],
+)
+def test_integer_setting_frames(key, value, text):
+    assert commands.set_integer_setting(key, value).text == text
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("bms_lock_soc", 101),
+        ("bms_lock_soc", -1),
+        ("second_output_recover_soc", 51),  # range of the sibling unit: 0-50 %
+        ("second_output_recover_delay", 4),  # 5-minute steps
+        ("second_output_discharge_time", 7),
+        ("second_output_discharge_time", 995),
+        ("battery_discharge_current_limit", 251),
+        ("bms_restart_soc", 50.0),
+        ("bms_restart_soc", "50"),
+        ("bms_restart_soc", True),
+        ("battery_bulk_voltage", 28),  # unknown key
+    ],
+)
+def test_integer_setting_rejects(key, value):
+    with pytest.raises(InvalidCommandError):
+        commands.set_integer_setting(key, value)
+
+
+def test_dual_output_frames():
+    assert commands.set_dual_output_mode(True).text == "PDAULC01"
+    assert commands.set_dual_output_mode(False).text == "PDAULC00"
+    assert commands.set_second_output(True).text == "PDAULON01"
+    assert commands.set_second_output(False).text == "PDAULON00"
+    for bad in (1, 0, "on", None):
+        with pytest.raises(InvalidCommandError):
+            commands.set_dual_output_mode(bad)
+        with pytest.raises(InvalidCommandError):
+            commands.set_second_output(bad)
+
+
+def test_clock_frame():
+    from datetime import datetime
+
+    command = commands.set_clock(datetime(2026, 11, 12, 21, 5, 9))
+    assert command.text == "^S???DAT261112210509"
+    assert command.frame.startswith(b"^S???DAT261112210509") and command.frame.endswith(b"\r")
+
+
+@pytest.mark.parametrize("moment", [None, "2026-11-12", 20261112])
+def test_clock_rejects_non_datetime(moment):
+    with pytest.raises(InvalidCommandError):
+        commands.set_clock(moment)
+
+
+def test_clock_rejects_years_outside_the_lcd_range():
+    from datetime import datetime
+
+    with pytest.raises(InvalidCommandError):
+        commands.set_clock(datetime(2015, 1, 1))

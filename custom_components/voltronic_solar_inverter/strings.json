@@ -599,6 +599,17 @@
       },
       "fault_code_record": {
         "name": "Record fault codes"
+      },
+      "second_output_mode": {
+        "name": "Second output mode"
+      },
+      "second_output": {
+        "name": "Second output"
+      }
+    },
+    "button": {
+      "set_clock": {
+        "name": "Set inverter clock to HA time"
       }
     },
     "select": {
@@ -637,6 +648,54 @@
     "number": {
       "max_discharging_current": {
         "name": "Max discharging current"
+      },
+      "battery_low_alarm_voltage": {
+        "name": "Battery low alarm voltage"
+      },
+      "second_output_cutoff_voltage": {
+        "name": "Second output cutoff voltage"
+      },
+      "second_output_cutoff_soc": {
+        "name": "Second output cutoff SOC"
+      },
+      "second_output_recover_voltage": {
+        "name": "Second output restore voltage"
+      },
+      "second_output_recover_soc": {
+        "name": "Second output restore SOC"
+      },
+      "second_output_recover_delay": {
+        "name": "Second output restore delay"
+      },
+      "second_output_discharge_time": {
+        "name": "Second output discharge time"
+      },
+      "bms_lock_soc": {
+        "name": "BMS lock SOC"
+      },
+      "bms_back_to_ac_soc": {
+        "name": "BMS back-to-AC SOC"
+      },
+      "bms_back_to_battery_soc": {
+        "name": "BMS back-to-battery SOC"
+      },
+      "bms_restart_soc": {
+        "name": "BMS restart SOC"
+      },
+      "battery_discharge_current_limit": {
+        "name": "Battery discharge current limit"
+      },
+      "ac_output_on_hour": {
+        "name": "AC output on hour"
+      },
+      "ac_output_off_hour": {
+        "name": "AC output off hour"
+      },
+      "ac_charger_start_hour": {
+        "name": "AC charger start hour"
+      },
+      "ac_charger_stop_hour": {
+        "name": "AC charger stop hour"
       },
       "own_consumption_battery_mode": {
         "name": "Own consumption (battery mode)"

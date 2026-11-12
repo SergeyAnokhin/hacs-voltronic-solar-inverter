@@ -1,0 +1,140 @@
+{
+  "note": "Read-only Q probes (with CRC) derived from the vendor service tool (zhuaibai/TQF-AllInOne), one new command per connection after a QMOD warm-up, mode S, 2026-11-12.",
+  "stream": {
+    "QACCT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QACLT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QBDV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QCP": {
+      "raw_hex": "2830323ce30d",
+      "text": "02",
+      "crc_ok": true,
+      "seconds": 0.203,
+      "error": null
+    },
+    "QDAULC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QDAULON": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QDDCGT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.562,
+      "error": "timeout"
+    },
+    "QDDLYT": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.563,
+      "error": "timeout"
+    },
+    "QDISCC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.563,
+      "error": "timeout"
+    },
+    "QDSDV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.563,
+      "error": "timeout"
+    },
+    "QDSRV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.547,
+      "error": "timeout"
+    },
+    "QGFC": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.562,
+      "error": "timeout"
+    },
+    "QGFP": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QOP": {
+      "raw_hex": "2830310c800d",
+      "text": "01",
+      "crc_ok": true,
+      "seconds": 0.187,
+      "error": null
+    },
+    "QPVENGUSE": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QSDV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QSLV": {
+      "raw_hex": "",
+      "text": "",
+      "crc_ok": null,
+      "seconds": 1.578,
+      "error": "timeout"
+    },
+    "QBFT": {
+      "raw_hex": "2832372e32b8d50d",
+      "text": "27.2",
+      "crc_ok": true,
+      "seconds": 0.219,
+      "error": null
+    },
+    "QCVV": {
+      "raw_hex": "2832382e3294e40d",
+      "text": "28.2",
+      "crc_ok": true,
+      "seconds": 0.235,
+      "error": null
+    }
+  },
+  "host": "192.168.1.47",
+  "taken_at": "2026-11-12 21:30:50"
+}

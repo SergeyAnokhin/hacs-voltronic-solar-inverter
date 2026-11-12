@@ -24,7 +24,14 @@ from .errors import (
     InverterProtocolError,
     InverterTimeoutError,
 )
-from .framing import CR, decode_frame, decode_plain_frame, encode_frame, encode_plain_frame
+from .framing import (
+    CR,
+    decode_frame,
+    decode_plain_frame,
+    decode_write_answer,
+    encode_frame,
+    encode_plain_frame,
+)
 from .h_parsers import (
     Generation,
     SettingsEeprom1,
@@ -125,7 +132,7 @@ class InverterClient:
         """
         if not isinstance(command, WriteCommand):
             raise InvalidCommandError("write() accepts only WriteCommand instances")
-        payload = await self._request(command.text, command.frame, decode_frame, 0)
+        payload = await self._request(command.text, command.frame, decode_write_answer, 0)
         if payload == "ACK":
             return
         if payload == "NAK":

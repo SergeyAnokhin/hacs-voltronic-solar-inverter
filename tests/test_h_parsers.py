@@ -72,9 +72,34 @@ def test_heep2_other_positions():
 
 def test_heep2_low_alarm_voltage_verified_change():
     # Recorded 2026-10-11: the owner changed P24 on the LCD from 23.2 to 23.6 V.
-    s = parse_heep2("1 022.0 020 023.6 023.0 025.5 0 029.2 060 120 030 0000 0000 05 0000 26.0 500")
+    s = parse_heep2("1 022.0 020 023.6 023.0 025.5 0 029.2 060 120 030 0000 0000 05 0000 26.0 50000")
     assert s.battery_low_alarm_voltage == 23.6
     assert s.dual_output_cutoff_voltage == 22.0
+
+
+def test_heep2_dual_output_positions_from_the_service_tool():
+    # Positions per the manufacturer's service tool; values are the unit's defaults
+    # (dual output on, 22.0 V / 20 % shutdown, 26.0 V / 50 % restore, 0 min discharge time).
+    s = parse_heep2(H_LBU["HEEP2"])
+    assert s.dual_output_enabled is True
+    assert s.dual_output_cutoff_soc == 20
+    assert s.dual_output_recover_soc == 50
+    assert s.dual_output_discharge_time == 0
+    t = parse_heep2("0 022.0 030 023.6 023.0 025.5 0 029.2 060 120 030 0000 0000 05 0000 26.0 40015")
+    assert (t.dual_output_enabled, t.dual_output_cutoff_soc) == (False, 30)
+    assert (t.dual_output_recover_soc, t.dual_output_discharge_time) == (40, 15)
+
+
+@pytest.mark.parametrize("packed", ["500", "5000a", "500000"])
+def test_heep2_rejects_a_malformed_packed_field(packed):
+    with pytest.raises(InverterProtocolError):
+        parse_heep2(f"1 022.0 020 023.6 023.0 025.5 0 029.2 060 120 030 0000 0000 05 0000 26.0 {packed}")
+
+
+def test_heep1_bms_soc_positions_from_the_service_tool():
+    s = parse_heep1(H_LBU["HEEP1"])
+    assert (s.bms_shutdown_soc, s.bms_back_to_ac_soc) == (10, 20)
+    assert (s.bms_back_to_battery_soc, s.bms_restart_soc) == (95, 50)
 
 
 def test_heep1_solar_supply_priority_verified_change():

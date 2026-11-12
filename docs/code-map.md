@@ -23,16 +23,16 @@ Where to find things. `custom_components/` contains only this integration (the H
 | [`hacs.json`](../hacs.json) | HACS metadata (name, minimum HA 2025.8) |
 | [`custom_components/voltronic_solar_inverter/`](../custom_components/voltronic_solar_inverter/) | The integration (domain `voltronic_solar_inverter`); per-file roles in [integration.md](integration.md#files) |
 | [`…/manifest.json`](../custom_components/voltronic_solar_inverter/manifest.json) | Version, `config_flow`, `iot_class: local_polling`, `integration_type: device`, no requirements |
-| [`…/protocol/framing.py`](../custom_components/voltronic_solar_inverter/protocol/framing.py) | CRC-16/XMODEM with 0x28/0x0D/0x0A escaping, frame encode/decode |
+| [`…/protocol/framing.py`](../custom_components/voltronic_solar_inverter/protocol/framing.py) | CRC-16/XMODEM with 0x28/0x0D/0x0A escaping, frame encode/decode; `decode_write_answer` (`(ACK`/`(NAK` and PI18-style `^1`/`^0`) |
 | [`…/protocol/client.py`](../custom_components/voltronic_solar_inverter/protocol/client.py) | `InverterClient`: async TCP, lock, timeout/retry/reconnect, `query()` (Q only) / `write()` (ACK/NAK), typed `read_*` helpers |
 | [`…/protocol/h_parsers.py`](../custom_components/voltronic_solar_inverter/protocol/h_parsers.py) | Parsers for the CRC-less H dialect: `HGEN` (clock, PV energy), `HEEP1`/`HEEP2` (P43, schedules, thresholds), `HTEMP`, `HGRID`, `HIMSG1` |
 | [`…/protocol/parsers.py`](../custom_components/voltronic_solar_inverter/protocol/parsers.py) | Response dataclasses and parsers; enum code tables incl. the `*_VERIFIED` priority codes; QPIWS bit table |
-| [`…/protocol/commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) | **All** setting commands (validated builders), 24 V voltage ranges, `QUERY_RE` |
+| [`…/protocol/commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) | **All** setting commands (validated builders, incl. `set_schedule`), 24 V voltage ranges, `QUERY_RE` |
 | [`…/protocol/errors.py`](../custom_components/voltronic_solar_inverter/protocol/errors.py) | Exception hierarchy (`InverterError` …) |
 | [`…/power_balance.py`](../custom_components/voltronic_solar_inverter/power_balance.py) | Power balance: inverter losses, own consumption per state (setting keys, defaults, load fraction, unseen grid part), full PV power, net generation (daily balance), `Breakdown` (formula + terms shown as attributes); no HA imports |
 | [`…/smoothing.py`](../custom_components/voltronic_solar_inverter/smoothing.py) | `SmoothedValue` (mean or median over a window, publishes only significant changes), `DailyMax` and `DailyEnergy` (trapezoidal kWh since midnight, thinned writes); no HA imports |
 | [`…/coordinator.py`](../custom_components/voltronic_solar_inverter/coordinator.py), [`entity.py`](../custom_components/voltronic_solar_inverter/entity.py) | Fast/slow coordinators, runtime data, failure grace (`failures`, per-field `_misses`); base entity (`available` honours the grace) and the single write path |
-| `…/sensor.py`, `binary_sensor.py`, `switch.py`, `select.py`, `number.py` | Entity platforms (descriptions with `value_fn`) |
+| `…/sensor.py`, `binary_sensor.py`, `switch.py`, `select.py`, `number.py`, `button.py` | Entity platforms (descriptions with `value_fn`); `button.py` = *Set inverter clock to HA time* |
 | `…/config_flow.py`, `diagnostics.py`, `strings.json`, `translations/en.json`, `icons.json` | Config/options flow, redacted diagnostics, UI text (en only), icons |
 | [`tests/conftest.py`](../tests/conftest.py) | Fixture loaders and `FakeGateway` (fake transport; no socket) |
 | `tests/test_framing.py`, `test_parsers.py`, `test_h_parsers.py`, `test_commands.py`, `test_client.py`, `test_smoothing.py`, `test_power_balance.py` | Tests without HA (plain pytest); `test_h_parsers.py` covers H dialect, `Q1`, `QBEQI`; `test_smoothing.py` the publish rules, `test_power_balance.py` the balance formulas |

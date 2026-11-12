@@ -45,6 +45,10 @@ response: '(' <payload, space separated> <CRC16 hi> <CRC16 lo> 0x0D
 | `QWS` | 64 × `0` | UPS-protocol warning bits. **Stayed all-zero during a real grid loss** (while `QPIWS` a5 was set), so it does not mirror the inverter's warnings. Not useful | not needed |
 | `QBT` | `02` | Battery type, same code as `QPIRI[12]` (2 = user-defined) | not needed |
 | `QGR` | `00` | Grid working range, same as `QPIRI[15]` (0 = Appliance) | not needed |
+| `QCVV` | `28.2` | Bulk (CV) voltage, P26; same as `QPIRI[10]` / `HEEP1[14]`. From the vendor service tool, verified 2026-11-12 | not needed |
+| `QBFT` | `27.2` | Float voltage, P27; same as `QPIRI[11]` / `HEEP1[15]`. From the vendor service tool, verified 2026-11-12 | not needed |
+| `QOP` | `01` | Output source priority as the `POP` argument (`01` = SBU while `QPIRI[16]` = 1). Found by analogy, verified 2026-11-12 | not needed |
+| `QCP` | `02` | Charger priority as the `PCP` argument (`02` = only solar while `QPIRI[17]` = 2). Found by analogy, verified 2026-11-12 | not needed |
 
 ### Known but refused: `(NAK` (verified)
 
@@ -76,8 +80,9 @@ All were sent one per connection with a 1.0–2.0 s timeout, in mode B with grid
 | `QGS`, `QRI`, `QS`, `QMF`, `QPD`, `QHE`, `QFRE`, `QPAR`, `QLDL`, `QBYV`, `QBYF`, `QBDR`, `QSK1`–`QSK4`, `QSKT1`, `QSKT2`, `Q3PV`, `Q3PC`, `Q3OV`, `Q3OC`, `Q3LD`, `Q3YV` | UPS-protocol status, ranges, outlets, 3-phase | NUT Voltronic UPS protocol |
 | `QBAT`, `QBCV`, `QBCHGS` | — | diysolarforum GD3024EMH thread (NAK there) |
 | `QDAT`, `QTIME`, `QCLK`, `QRTC`, `QTM`, `QSCH`, `QTIMER`, `QPIRI2`, `QPIWS2`, `QDI3` | Guesses for clock/schedule/extended tables | own guesses |
+| `QSLV`, `QSDV`, `QBDV`, `QDISCC`, `QACLT`, `QACCT`, `QDAULC`, `QDAULON`, `QDSDV`, `QDSRV`, `QDDCGT`, `QDDLYT`, `QGFP`, `QGFC`, `QPVENGUSE` | Read-back guesses: `Q` + a vendor-tool setter name without its `P` (the pattern of `QCVV` / `QBFT` / `QOP` / `QCP`, which do answer). Mode S, 2026-11-12 | own guesses |
 
-Raw results: [`probe_candidates.json`](../tests/fixtures/probe_candidates.json), [`probe_extra.json`](../tests/fixtures/probe_extra.json), [`probe_extra2.json`](../tests/fixtures/probe_extra2.json), [`probe_run1.json`](../tests/fixtures/probe_run1.json).
+Raw results: [`probe_candidates.json`](../tests/fixtures/probe_candidates.json), [`probe_extra.json`](../tests/fixtures/probe_extra.json), [`probe_extra2.json`](../tests/fixtures/probe_extra2.json), [`probe_run1.json`](../tests/fixtures/probe_run1.json), [`probe_vendor_tool_queries.json`](../tests/fixtures/probe_vendor_tool_queries.json).
 
 **Consequences:** through **PI30** the device clock, the energy counters, the schedules, the dual-output state and BMS data are not readable. Most of them **are** readable through the [Solar Plug H-protocol](#solar-plug-h-protocol-no-crc): the clock and PV energy counters via `HGEN`, the P48/P49 schedule via `HEEP2`, the dual-output settings via `HEEP1`/`HEEP2`. There is no BMS on this unit. Load (output) energy counters were not found in either dialect, so HA must integrate the load power for that.
 
@@ -303,6 +308,44 @@ Per-setting read sources and write commands: [settings-map.md](settings-map.md).
 
 Not found in either dialect: load (output) energy counters, a true SOC (no BMS), fault history (`QPIHF` NAK).
 
+### Field meanings from the vendor service tool (2026-11-12)
+
+The manufacturer's service tool ([zhuaibai/TQF-AllInOne](https://github.com/zhuaibai/TQF-AllInOne), see [Sources](#sources)) decodes the H replies of device type `HPVINV02` as below. Index = 0-based token, "char n" = 0-based character inside a token. "Fits" = consistent with every sample recorded here (latest: [`snapshot_S_2026-11-12_h.json`](../tests/fixtures/snapshot_S_2026-11-12_h.json)); none of the new positions was confirmed by changing the setting. **Where it disagrees with the tables above, the difference is listed, and the integration code was not changed.**
+
+| Reply | Position | Meaning (vendor tool) | This unit |
+|---|---|---|---|
+| `HEEP1` | [0] | Working mode (output priority): 0 SUB, 1 SBU | fits (`QOP`) |
+| | [3] char 0 / 1 / 2 | AC input range / PV grid-connection protocol (P50, Mode0–4) / battery type | `0` / `1` / `2` |
+| | [3] char 3 / 4 / 5 | PV feed priority (P43) / overload restart / input-source prompt sound (P22) | char 3 verified earlier; `0` / `1` fit `QFLAG` |
+| | [3] char 6 / 7 / 8–10 | Over-temperature restart / external CT enable / output voltage setting (P10) | `1` / `0` / `230` |
+| | [4] char 0 / 1 / 2 | Output frequency code / auto return to home screen / charger priority | `0` (50 Hz) / `0` / `2` fits (`QCP`) |
+| | [5] / [6] / [7] | Buzzer / LCD backlight / overload to bypass | fit `QFLAG` |
+| | [8] / [9] | Output mode (0 single, 1 parallel, 2–4 three-phase) / BMS communication on/off | `0` / `0` |
+| | [10] / [11] / [12] / [13] | BMS lock SOC (P38) / back-to-AC SOC (P39) / back-to-battery SOC (P40) / restart SOC after low power (P41) | `010 020 095 050` |
+| | [14] / [15] / [16] / [17] | Bulk / float / cut-off voltage / grid-connected current | fits |
+| | [18] char 0 | Grid-connected function (P44) | `0` (off) |
+| `HEEP2` | [0] | Dual output mode on/off | `1` |
+| | [1] / [2] | Second-output shutdown voltage / SOC | `022.0` / `020` |
+| | [3] / [4] / [5] | Low-battery alarm / back to mains / back to battery voltage | fits (verified earlier) |
+| | [6] / [7] / [8] / [9] / [10] | Equalization mode / voltage / time / timeout / interval | fits |
+| | [13] / [15] | Second-output restore delay / restore voltage | `05` / `26.0` |
+| | [16] chars 0–1 / 2–4 | Second-output restore SOC / second-output discharge time | `50` / `000` |
+| `HSTS` | [0] | Fault code | `00` |
+| | [1] char 0 / 1 / 2 | Mode letter / PV feeds the load in AC mode / **machine has output** | `S` / `0` / `0` in mode S |
+| | [1] char 3–12 | Battery low alarm, battery not connected, output overload, over-temperature, EEPROM data error, EEPROM read/write error, PV power too low, input over-voltage, battery over-voltage, fan speed fault | all `0` |
+| | [2] char 0 / 1 / 2 | Units in the parallel system / grid-tie flag / role in the parallel system | `1` / `0` / `2` |
+| | [2] char 3 / 4 | **Main output relay state / second output state** | `0` / `0` in mode S |
+| | [2] char 5 / 6 | BMS communication fault / temperature sensor fault | `0` / `0` |
+| | [2] char 7 / 8 / 9 / 10 | AC, inverter, charge, alarm LED state | `2 0 0 0` in mode S |
+| `HBAT` | [0] | Number of battery cells (the tool's label; `02`, the same value as `QMD`'s "2 batteries × 12 V") | **differs:** read here as the battery type (also `2`) |
+| | [6] char 0 / 1 / 2 / 6 | Charger master switch / solar charging switch / AC charging switch / battery state | `000000010101` in mode S |
+| `HOP` | [5] / [7] / [8] | Output DC offset / inductor current / inductor power | were "unknown" |
+| `HTEMP` | [0] / [1] / [2] / [3] | PV / inverter / boost / transformer temperature; [4] maximum, [5] fan speed, [7] char 0 fan enable | **differs:** the table above has inverter / boost / transformer / PV (from solarplug-esphome). Decide with a daytime sample (the PV sensor should warm up with PV running) |
+| `HIMSG2` | [0] / [1] / [2] | Inverter / MPPT / AC total (rated) power | `04000 06500 04000` |
+| `HEEP3` | [3] / [5] / [6] | Zero-adjust power (`EZCTP`) / grid-connected power (`PGFP`) / battery discharge current limit (`DISCC`) | `0150` / `000` / zeros (layout taken from another device type of the tool) |
+
+`HSTS[1]` char 2 and `HSTS[2]` chars 3–4 are a third live "output on" signal next to `QMOD` and `QPIGS` status 2 b9, and the only one for the second output.
+
 ## Setting commands (implemented, unverified on this unit)
 
 Agents never send these to the device (see [AGENTS.md](../AGENTS.md)); the owner tests them. Implemented in [`protocol/commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) with exact-frame tests in [`tests/test_commands.py`](../tests/test_commands.py). Answer: `(ACK` or `(NAK`.
@@ -318,7 +361,7 @@ Agents never send these to the device (see [AGENTS.md](../AGENTS.md)); the owner
 | `PBCV<nn.n>` / `PBDV<nn.n>` | Back to utility (P12) / back to battery (P13) | 24 V: 22.0–25.5 / 24.0–29.0, step 0.5 |
 | `PSDV<nn.n>` / `PCVV<nn.n>` | Cut-off (P29) / bulk (P26) voltage | 24 V: 20.0–26.0 / 24.0–30.0, step 0.1 |
 
-Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type, `PBEQ*` equalization, `PGR`, `DAT` clock, `PF` factory reset, `F50`/`F60`. There is no public power-on/off or timer command.
+Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type, `PBEQ*` equalization, `PGR`, `DAT` clock, `PF` factory reset, `F50`/`F60`, and the service-tool setters not offered in HA (`GRIDFEED`, `^S???RS`, `EXTCT`, `POPM`, `V`, `PGFP`, `EZCTP`, `^S???CLE`, `PF`, `BTA*`, `IVA*`, `HOSTCRC`). The others found on 2026-11-12 (schedules, clock `^S???DAT`, `PSLV`, second output, `DISCC`, BMS SOC) **are** implemented as experimental entities ([settings-map.md](settings-map.md#setters-from-the-vendor-service-tool-2026-11-12)). Their answer may be PI18-style `^1` / `^0`; `framing.decode_write_answer` accepts it next to `(ACK` / `(NAK`. No power-on/off command is known for this device type.
 
 ## Integration implementation notes
 
@@ -337,4 +380,6 @@ Not implemented: `PBFT` float voltage (range not documented), `PBT` battery type
 | [NUT Voltronic UPS protocol](https://networkupstools.org/protocols/voltronic.html) | UPS-protocol commands: `QMD`, `QBV`, `QWS`, `QBT`, `QGR` (answering here) and many silent ones |
 | [syssi/esphome-pipsolar](https://github.com/syssi/esphome-pipsolar), [ned-kelly/docker-voltronic-homeassistant](https://github.com/ned-kelly/docker-voltronic-homeassistant), [fadmaz/siseli-ha](https://github.com/fadmaz/siseli-ha) | Command sets used in practice (`QBATCD`, `QPGS0`, `QPIGS2`, `QET/QLT`); nothing beyond the above |
 | [rutgerputter/solarplug-esphome](https://github.com/rutgerputter/solarplug-esphome) | The Solar Plug / Solar of Things **H-protocol** (no CRC): `QPRTL`, `HGEN`, `HEEP1/2`, `HTEMP`, … reverse-engineered on a `VMII-6200` fw 40.05 (`HPVINV02`); field layouts in its `docs/protocol/H_COMMANDS.md` and `protocol/fields.yaml`. Also reports the same "first command after idle times out once" behaviour |
+| [zhuaibai/TQF-AllInOne](https://github.com/zhuaibai/TQF-AllInOne) (found 2026-11-12) | Source code of the manufacturer's Windows service tool (C#, WPF) for device types `HPVINV02/04/06/07/08`, `UPSCYX01`, `LB6`. Setters with their value formats (`WpfApp1/Command/Comand_GB3024/Special_Command.cs`, `HEEP2_ViewModel.cs`, `GB_General/HEEP1_HPVINV04_ViewModel.cs`, which holds the class `HEEP1_HPVINV02_ViewModel`), H-reply decoders, the unused query names `QCVV` / `QBFT`. All setters are sent with CRC-16/XMODEM + CR (`Services/SerialCommunicationService.cs`) |
+| [filipsworks/SoT-RWB1-Server-Emulator](https://github.com/filipsworks/SoT-RWB1-Server-Emulator) | Solar of Things dongle (RWB1, Easun SMT 4 kW 24 V) driven over MQTT; its write channels repeat the vendor tool's setter names (`PSLV`, `DISCC`, `PDSDS`, `PDSRV`, `PDDCGT`, `PDAULC`, `BMSSRC`, `BMSB2UC`, `BMSU2BC`), an independent confirmation that they exist in this firmware family |
 | [diysolarforum: GD3024EMH comms](https://diysolarforum.com/threads/figuring-out-gd3024emh-inverter-comms.122039/) | A sibling 24 V VMII-3000 unit (fw 00010.13): identical `QDI`; `QT`, `QET`, `QEY`, `QVFW3`, `QBAT`, `QBCV`, `QBCHGS` NAK there |

@@ -58,6 +58,23 @@ def decode_frame(frame: bytes) -> str:
         raise InverterProtocolError(f"non-ASCII payload: {frame!r}") from err
 
 
+def decode_write_answer(frame: bytes) -> str:
+    """Return "ACK" / "NAK" (or the payload) of the answer to a setting command.
+
+    PI30 setters answer "(ACK" / "(NAK" + CRC. The "^S???" setters of the service tool
+    may answer in the PI18 style, "^1" (accepted) / "^0" (refused), with or without a
+    CRC (a sibling unit answered "^1" to "^S???DAT"); both are mapped to ACK / NAK.
+    """
+    body = frame[:-1] if frame.endswith(CR) else frame
+    if body[:1] == b"^":
+        if body[1:2] in (b"0", b"1") and (
+            len(body) == 2 or (len(body) == 4 and crc_bytes(body[:2]) == body[2:])
+        ):
+            return "ACK" if body[1:2] == b"1" else "NAK"
+        raise InverterProtocolError(f"malformed write answer: {frame!r}")
+    return decode_frame(frame)
+
+
 # --- Solar Plug "H" dialect: no CRC in either direction ------------------------
 
 

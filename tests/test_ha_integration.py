@@ -223,7 +223,7 @@ async def test_setup_creates_read_only_entities(hass: HomeAssistant, inverter: I
     assert estimate is not None and estimate.disabled_by is not None
     # Control entities always exist (changes are at the user's risk).
     domains = {e.domain for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
-    assert domains == {"sensor", "binary_sensor", "number", "select", "switch"}
+    assert domains == {"sensor", "binary_sensor", "number", "select", "switch", "button"}
     # Setting up sends only queries.
     assert inverter.writes == []
 
@@ -418,6 +418,91 @@ async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:
                 {"entity_id": f"number.{PREFIX}_{entity}", "value": value}, blocking=True,
             )
     assert inverter.writes == ["MNCHGC040", "MUCHGC010", "PBCV23.5"]
+
+
+async def test_schedule_numbers_send_the_whole_window(
+    hass: HomeAssistant, inverter: Inverter
+) -> None:
+    await setup(hass)
+    # HEEP2 fixture: P48/P49 output 23-00, P46/P47 charger 01-02
+    assert hass.states.get(f"number.{PREFIX}_ac_output_on_hour").state == "23"
+    assert hass.states.get(f"number.{PREFIX}_ac_output_off_hour").state == "0"
+    assert hass.states.get(f"number.{PREFIX}_ac_charger_start_hour").state == "1"
+    assert hass.states.get(f"number.{PREFIX}_ac_charger_stop_hour").state == "2"
+
+    async def set_hour(entity: str, value: float) -> None:
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": f"number.{PREFIX}_{entity}", "value": value},
+            blocking=True,
+        )
+
+    await set_hour("ac_output_off_hour", 1)
+    await set_hour("ac_charger_stop_hour", 3)
+    assert inverter.writes == ["^S???ACLT23-01", "^S???ACCT01-03"]
+
+    with pytest.raises(ServiceValidationError):  # outside 0..23, nothing is sent
+        await set_hour("ac_output_on_hour", 24)
+    inverter.write_answer = "NAK"
+    with pytest.raises(HomeAssistantError, match="rejected"):
+        await set_hour("ac_output_on_hour", 22)
+    assert inverter.writes == ["^S???ACLT23-01", "^S???ACCT01-03", "^S???ACLT22-00"]
+
+
+async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) -> None:
+    """Experimental entities for the setters found in the manufacturer's service tool."""
+    await setup(hass)
+    state = hass.states.get
+    # Read back from HEEP1 / HEEP2 of the fixture (dual output on, 22.0 V / 20 %, 26.0 V / 50 %)
+    assert state(f"number.{PREFIX}_battery_low_alarm_voltage").state == "22.0"
+    assert state(f"number.{PREFIX}_second_output_cutoff_voltage").state == "22.0"
+    assert state(f"number.{PREFIX}_second_output_cutoff_soc").state == "20"
+    assert state(f"number.{PREFIX}_second_output_restore_voltage").state == "26.0"
+    assert state(f"number.{PREFIX}_second_output_restore_soc").state == "50"
+    assert state(f"number.{PREFIX}_second_output_restore_delay").state == "5"
+    assert state(f"number.{PREFIX}_second_output_discharge_time").state == "0"
+    assert state(f"switch.{PREFIX}_second_output_mode").state == "on"
+    assert state(f"switch.{PREFIX}_second_output").state == "unknown"  # not readable
+    assert state(f"number.{PREFIX}_battery_discharge_current_limit").state == "unknown"
+    assert state(f"number.{PREFIX}_bms_lock_soc") is None  # BMS entities are disabled by default
+    assert state(f"button.{PREFIX}_set_inverter_clock_to_ha_time") is not None
+
+    async def set_value(entity: str, value: float) -> None:
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": f"number.{PREFIX}_{entity}", "value": value},
+            blocking=True,
+        )
+
+    await set_value("battery_low_alarm_voltage", 23.6)
+    await set_value("second_output_restore_delay", 10)
+    await set_value("second_output_discharge_time", 30)
+    await set_value("battery_discharge_current_limit", 80)
+    assert float(state(f"number.{PREFIX}_battery_discharge_current_limit").state) == 80
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": f"switch.{PREFIX}_second_output_mode"}, blocking=True
+    )
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": f"switch.{PREFIX}_second_output"}, blocking=True
+    )
+    assert state(f"switch.{PREFIX}_second_output").state == "on"
+    assert inverter.writes == [
+        "PSLV23.6", "PDDLYT010", "PDDCGT0030", "DISCC080", "PDAULC00", "PDAULON01",
+    ]
+
+    with pytest.raises(ServiceValidationError):  # 5-minute steps only, nothing is sent
+        await set_value("second_output_restore_delay", 4)
+    assert len(inverter.writes) == 6
+
+    await hass.services.async_call(
+        "button", "press",
+        {"entity_id": f"button.{PREFIX}_set_inverter_clock_to_ha_time"}, blocking=True,
+    )
+    assert len(inverter.writes) == 7
+    assert inverter.writes[-1].startswith("^S???DAT") and len(inverter.writes[-1]) == len("^S???DAT") + 12
+
+    inverter.write_answer = "NAK"
+    with pytest.raises(HomeAssistantError, match="rejected"):
+        await set_value("second_output_cutoff_soc", 30)
+    assert float(state(f"number.{PREFIX}_battery_discharge_current_limit").state) == 80
 
 
 # --- H dialect and optional queries ----------------------------------------------

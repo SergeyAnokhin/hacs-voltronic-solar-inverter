@@ -4,7 +4,13 @@ import pytest
 
 from conftest import all_recorded_frames
 from protocol.errors import InverterProtocolError
-from protocol.framing import crc16_xmodem, crc_bytes, decode_frame, encode_frame
+from protocol.framing import (
+    crc16_xmodem,
+    crc_bytes,
+    decode_frame,
+    decode_write_answer,
+    encode_frame,
+)
 
 
 def test_crc16_xmodem_reference_value():
@@ -66,3 +72,22 @@ def test_decode_rejects_bad_frames(frame):
 def test_decode_nak_and_ack():
     assert decode_frame(b"(NAK" + crc_bytes(b"(NAK") + b"\r") == "NAK"
     assert decode_frame(b"(ACK" + crc_bytes(b"(ACK") + b"\r") == "ACK"
+
+
+def test_decode_write_answer_pi30_and_pi18_styles():
+    assert decode_write_answer(b"(ACK" + crc_bytes(b"(ACK") + b"\r") == "ACK"
+    assert decode_write_answer(b"(NAK" + crc_bytes(b"(NAK") + b"\r") == "NAK"
+    # the "^S???" setters may answer PI18-style, with or without a CRC
+    assert decode_write_answer(b"^1\r") == "ACK"
+    assert decode_write_answer(b"^0\r") == "NAK"
+    assert decode_write_answer(b"^1" + crc_bytes(b"^1") + b"\r") == "ACK"
+    assert decode_write_answer(b"^0" + crc_bytes(b"^0") + b"\r") == "NAK"
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [b"^1\x00\x00\r", b"^2\r", b"^\r", b"^1xyz\r", b"B\xe7\xc9\r", b""],
+)
+def test_decode_write_answer_rejects(frame):
+    with pytest.raises(InverterProtocolError):
+        decode_write_answer(frame)

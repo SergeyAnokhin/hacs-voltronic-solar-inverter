@@ -44,6 +44,9 @@ class SettingsEeprom1:
     bms_shutdown_soc: int  # [10] %, P38
     bms_back_to_battery_soc: int  # [12] %, P40
     grid_tie_current: int  # [17] A, P56
+    # Positions from the manufacturer's service tool (2026-11-12), not yet changed on this unit:
+    bms_back_to_ac_soc: int = 0  # [11] %, P39
+    bms_restart_soc: int = 0  # [13] %, P41
 
 
 def parse_heep1(payload: str) -> SettingsEeprom1:
@@ -57,6 +60,8 @@ def parse_heep1(payload: str) -> SettingsEeprom1:
         bms_shutdown_soc=_int(f[10], cmd),
         bms_back_to_battery_soc=_int(f[12], cmd),
         grid_tie_current=_int(f[17], cmd),
+        bms_back_to_ac_soc=_int(f[11], cmd),
+        bms_restart_soc=_int(f[13], cmd),
     )
 
 
@@ -71,12 +76,24 @@ class SettingsEeprom2:
     dual_output_recover_delay: int  # [13] min
     dual_output_schedule: Schedule  # [14]
     dual_output_recover_voltage: float  # [15] V
+    # Positions from the manufacturer's service tool (2026-11-12), not yet changed on this unit:
+    dual_output_enabled: bool = False  # [0]
+    dual_output_cutoff_soc: int = 0  # [2] %
+    dual_output_recover_soc: int = 0  # [16] chars 0-1, %
+    dual_output_discharge_time: int = 0  # [16] chars 2-4, min
 
 
 def parse_heep2(payload: str) -> SettingsEeprom2:
     cmd = "HEEP2"
-    f = _fields(payload, cmd, 16)
+    f = _fields(payload, cmd, 17)
+    packed = f[16]
+    if len(packed) != 5 or not packed.isdigit():
+        raise InverterProtocolError(f"{cmd}: unexpected packed field {packed!r}")
     return SettingsEeprom2(
+        dual_output_enabled=f[0] == "1",
+        dual_output_cutoff_soc=_int(f[2], cmd),
+        dual_output_recover_soc=int(packed[:2]),
+        dual_output_discharge_time=int(packed[2:]),
         battery_low_alarm_voltage=_float(f[3], cmd),
         dual_output_cutoff_voltage=_float(f[1], cmd),
         ac_charger_schedule=parse_schedule(f[11], cmd),
