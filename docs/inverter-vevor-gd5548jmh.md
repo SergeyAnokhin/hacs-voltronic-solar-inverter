@@ -102,7 +102,12 @@ Entered by holding ENTER 3 s; UP/DOWN selects, ENTER confirms. These are the dev
 | 50 | Country grid regulation (feed-in limits) | Mode 1: 195.5–253 V, 49–51 Hz; Mode 2: 184–264.5 V, 47.5–51.5 Hz; Mode 3: 184–264.5 V, 57–62 Hz; **Mode 4 (default)**: 170–264.5 V, 47.5–51.5 Hz | |
 | 51–55 | Time set: minute, hour, day, month, year | year 16–99 | Device clock (used for schedules and energy history) |
 | 56 | Grid-tie current | step 1 A | Feed-in current limit |
-| ~57–64 | **Dual output** group | enable/disable; voltage point (default 22 V on 24 V system), SOC point, recover voltage (default 26 V), recover SOC (default 50 %), second-output discharge time 0 / 5…990 min (P61), recover delay 0–60 min, output open/stop hour 0–23 | Second output is shed when battery is low; exact program numbers are not legible in the manual text |
+| 60 | Dual output | Disable (default) / Use | Second output, shed when the battery is low |
+| 61 / 62 | Dual output voltage point / SOC point | 22.0 V default on 24 V (44.0 V on 48 V); SOC point only with a lithium battery type | Second output is cut off below the setting |
+| 63 / 64 | Dual battery voltage / SOC recover | 26 V default on 24 V (52 V on 48 V); 50 % default (lithium only) | Second output is restored above the setting |
+| 65 | Discharge time on the second output | disable (default), then 0–990 min, step 5 | When the discharge time is reached (and the P60 function not triggered) the output is turned off |
+| 66 | Dual recover delay time | 0–60 min (5 shown) | |
+| 67 / 68 | Output open time / output stop time | 0–23 h each (00 shown) | Time window of the second output (owner's reading; the manual only says "Output Open / Stop Time") |
 
 Notes: 48 V-system values from the manual are omitted. Programs 04, 14, 15, 17, 21, 32, 42 are not listed in the manual.
 

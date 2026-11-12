@@ -104,6 +104,20 @@ def parse_heep2(payload: str) -> SettingsEeprom2:
     )
 
 
+def parse_hsts_second_output(payload: str) -> bool:
+    """HSTS[2] char 4: state of the second (dual) output, True = on.
+
+    Position from the manufacturer's service tool; verified on this unit on
+    2026-11-12: PDAULON00 changed it 1 -> 0 (HSTS[2] 11211001000L... -> 11210001000L...)
+    while the unit ran in line mode with the dual output enabled (P60).
+    """
+    cmd = "HSTS"
+    state = _fields(payload, cmd, 3)[2][4:5]
+    if state not in ("0", "1"):
+        raise InverterProtocolError(f"{cmd}: unexpected second output flag in {payload!r}")
+    return state == "1"
+
+
 @dataclass(frozen=True, slots=True)
 class Generation:
     """HGEN: inverter clock (local, minute resolution) and PV energy counters."""

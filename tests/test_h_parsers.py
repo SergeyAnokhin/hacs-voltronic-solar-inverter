@@ -14,11 +14,13 @@ from protocol.h_parsers import (
     parse_hgen,
     parse_hgrid_power,
     parse_himsg1_firmware_date,
+    parse_hsts_second_output,
     parse_htemp,
     parse_schedule,
 )
 from protocol.parsers import parse_q1_charge_stage, parse_qbeqi
 
+H_SECOND = plain_answered("snapshot_L_2026-11-12_second_output.json")
 H_S = plain_answered("probe_h_commands_S.json")  # schedule 19-21, P43 BLU, P46/P47 00-00
 H_SCHED = plain_answered("probe_heep2_schedule_23-00.json")
 H_LBU = plain_answered("snapshot_p46-47_01-02_p43_LBU_h.json")  # P46/P47 01-02, P43 LBU
@@ -169,3 +171,16 @@ def test_qbeqi():
     assert e.voltage == 29.2
     assert e.active is False
     assert e.elapsed == 0
+
+
+def test_hsts_second_output_state_verified_change():
+    # Owner's run 2026-11-12 (mode L): PDAULON00 changed HSTS[2] char 4 from 1 to 0.
+    assert parse_hsts_second_output(H_SECOND["HSTS_second_output_on"]) is True
+    assert parse_hsts_second_output(H_SECOND["HSTS_second_output_off"]) is False
+    assert parse_hsts_second_output(H_S["HSTS"]) is False  # mode S, main output off
+
+
+@pytest.mark.parametrize("payload", ["00 L010000000000", "00 L010000000000 1121", "00 L010000000000 11212001000L"])
+def test_hsts_second_output_rejects_bad_answers(payload):
+    with pytest.raises(InverterProtocolError):
+        parse_hsts_second_output(payload)

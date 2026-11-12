@@ -42,6 +42,7 @@ from .h_parsers import (
     parse_hgen,
     parse_hgrid_power,
     parse_himsg1_firmware_date,
+    parse_hsts_second_output,
     parse_htemp,
 )
 from .parsers import (
@@ -178,6 +179,9 @@ class InverterClient:
 
     async def read_settings_2(self) -> SettingsEeprom2:
         return parse_heep2(await self.query_plain("HEEP2"))
+
+    async def read_second_output(self) -> bool:
+        return parse_hsts_second_output(await self.query_plain("HSTS"))
 
     async def read_generation(self) -> Generation:
         return parse_hgen(await self.query_plain("HGEN"))

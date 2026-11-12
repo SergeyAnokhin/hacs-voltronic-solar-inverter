@@ -1,4 +1,4 @@
-# LCD Settings Map (P01–P64): read sources and write commands
+# LCD Settings Map (P01–P68): read sources and write commands
 
 For every LCD program of the Vevor GD5548JMH (see [inverter-vevor-gd5548jmh.md](inverter-vevor-gd5548jmh.md#3-lcd-settings-programs)), this page lists where its current value can be **read** over RS232 and which command is known to **write** it. Reads come from the PI30 dialect (`Q…` + CRC) and the CRC-less Solar Plug H dialect; both are described in [inverter-protocol.md](inverter-protocol.md). Values in the "Now" column were read on 2026-10-02 before the owner's test changes (at 21:45 the owner left P02 = 40 A, P12 = 22.5, P13 = 25.5, P26 = 29.1, P27 = 29.0, P29 = 21.7) and match the owner's Solar of Things screenshots (`docs/screenshots/solar_of_things/`, not in the repository).
 
@@ -50,21 +50,25 @@ Confidence of the read position: **V** = verified here by a change (owner change
 | 50 | Grid regulation (feed-in) | Mode 2 (app) | `HEEP1[3]` char 1 (vendor tool; reads `1`, so the app's mode numbers may start at 1) | ? | `^S???RS<NN>` with `00`–`04` = Mode0–Mode4 (vendor tool); remote-panel spec `SRS<nn>` | Tool / spec |
 | 51–55 | Clock | ~10 min slow | `HGEN[0..1]` (YYMMDD HH:MM) | M (app) | `^S???DAT<yymmddhhmmss>` (vendor tool and dongle; the `???` are three literal question marks; the reference unit answered `^1`); PI30 `DAT<yymmddhhmmss>` | Tool / Ref / spec |
 | 56 | Grid-tie current | 12 A | `HEEP1[17]` | M (app 12; Ref readback-verified) | `PGFC<nnn>` | Ref (ACK + readback) |
-| 57–64 | Dual (second) output | see below | see below | | see below | |
+| 60–68 | Dual (second) output | see below | see below | | see below | |
 
-### Dual output (P57–P64, program numbers not legible in the manual)
+### Dual output (P60–P68)
+
+**Numbers and meaning from the vendor manual** (read on 2026-11-12 from the owner's copy of the vendor manual (`HYBRID-SOLAR-INVERTER（GD5548JMH）_1784720921157.pdf`, 336 pages, several languages; English program tables on PDF pages 30-31 = printed pages 27-29); the text layer loses the numbering, render the page with `pdftoppm -f 30 -l 31 -r 90 -png`): P60 dual output **Disable (default) / Use**; P61 voltage point (default 44.0 V on 48 V, **22.0 V on 24 V**; the second output is cut off when the battery voltage is lower); P62 SOC point (lithium with BMS only); P63 recover voltage (default 52 V / **26 V**); P64 recover SOC (default 50 %, lithium with BMS only); P65 discharge time on the second output (disable, then 0–990 min, step 5; "if the battery discharge time reaches the P65 time and the P60 function is not triggered, the output is turned off"); P66 recover delay time 0–60 min; **P67 Output Open Time and P68 Output Stop Time, 0–23 h** (their LCD pages carry the same OUTPUT icon as P48/P49). Earlier notes called the group "P57–P64, numbers not legible"; that was wrong.
+
+**Correction (owner, 2026-11-12):** P48/P49 are the schedule of the **main** output only; the second output has its own time program, P67/P68 (`HEEP2[14]`, app "INV Dual Output Time"). Earlier notes and a test plan that tied the second output to P48/P49 were wrong. The manual does not say whether the second output needs the main output to be on. See [research-summary.md](research-summary.md#correction-owner-2026-11-12).
 
 | Item | Now (app) | Read source | Conf. | Write command | Source |
 |---|---|---|---|---|---|
-| Dual output mode on/off | on | `HEEP2[0]` (`1`) | M (vendor tool) | `PDAULC00` / `PDAULC01` | Tool (SoT dongle channel "dual remote switch") |
-| Cut-off voltage point | 22.0 V (app "Parallel Shutdown Battery Voltage") | `HEEP2[1]` | M (vendor tool) | `PDSDV<nn.n>` (vendor tool); remote-panel spec `PTOPV<nn.n>` | Tool / spec |
-| Cut-off SOC point | 20 % (app "Parallel Shutdown Battery SOC") | `HEEP2[2]` | M (vendor tool) | `PDSDS<nnn>` (vendor tool); remote-panel spec `PTOPVC<nnn>` | Tool / spec |
-| Recover voltage | 26.0 V | `HEEP2[15]` | M | `PDSRV<nn.n>` | Tool |
-| Recover SOC | 50 % | `HEEP2[16]` chars 0–1 | M (vendor tool) | `PDSRS<nnn>` (Ref: range 0–50 %) | Ref / tool |
-| Second-output discharge time | 0 min | `HEEP2[16]` chars 2–4 | M (vendor tool) | `PDDCGT<nnnn>` (4 digits, vendor tool); remote-panel spec `PTOPD<nnn>` | Tool / spec; Ref portal: not supported |
-| Recover delay | 5 min | `HEEP2[13]` | M | `PDDLYT<nnn>` (5-min steps; Ref NAK on 4 and 6) | Ref |
-| Open/stop hours | 00–00 (app "INV Dual Output Time") | `HEEP2[14]` | M (format like `HEEP2[12]`) | `PTOPS<mm nn>` | Spec |
-| Relay on/off (live) | off in mode S | `HSTS[2]` char 4 (vendor tool: second output state) | M | `PDAULON00` off / `PDAULON01` on (vendor tool "auxiliary output off / on"); remote-panel spec `PTOPE<n>` | Tool / spec |
+| P60 Dual output enable (0 disable / 1 use) | `1` (the owner set it to `0` on the LCD, then `PDAULC01` flipped it back on 2026-11-12) | `HEEP2[0]` | **V** (`PDAULC01` ACKed and `HEEP2[0]` 0 → 1) | `PDAULC00` / `PDAULC01` | Tool (SoT dongle channel "dual remote switch"); **verified on the unit** |
+| P61 Cut-off voltage point | 22.0 V (app "Parallel Shutdown Battery Voltage") | `HEEP2[1]` | M (vendor tool) | `PDSDV<nn.n>` (vendor tool); remote-panel spec `PTOPV<nn.n>` | Tool / spec |
+| P62 Cut-off SOC point | 20 % (app "Parallel Shutdown Battery SOC") | `HEEP2[2]` | M (vendor tool) | `PDSDS<nnn>` (vendor tool); remote-panel spec `PTOPVC<nnn>` | Tool / spec |
+| P63 Recover voltage | 26.0 V | `HEEP2[15]` | M | `PDSRV<nn.n>` | Tool |
+| P64 Recover SOC | 50 % | `HEEP2[16]` chars 0–1 | M (vendor tool) | `PDSRS<nnn>` (Ref: range 0–50 %) | Ref / tool |
+| P65 Second-output discharge time (disable / 0–990 min) | 0 (= disable?) | `HEEP2[16]` chars 2–4 | M (vendor tool) | `PDDCGT<nnnn>` (4 digits, vendor tool); remote-panel spec `PTOPD<nnn>` | Tool / spec; Ref portal: not supported |
+| P66 Recover delay | 5 min | `HEEP2[13]` | M | `PDDLYT<nnn>` (5-min steps; Ref NAK on 4 and 6) | Ref |
+| P67 / P68 Output open / stop time (0–23 h) | 00–00 (app "INV Dual Output Time") | `HEEP2[14]` | M (format like `HEEP2[12]`) | no setter in the vendor tool; remote-panel spec `PTOPS<mm nn>` (untested) | Spec |
+| Relay on/off (live) | on in mode L with P60 on; off in mode S | `HSTS[2]` char 4 (1 = on) | **V** (`PDAULON00` changed it 1 → 0, 2026-11-12; the off → on step is still to run) | `PDAULON00` off / `PDAULON01` on (vendor tool "auxiliary output off / on"); remote-panel spec `PTOPE<n>` | Tool / spec |
 
 ## In the Home Assistant integration (0.2.0; extended 2026-11-12)
 
@@ -113,6 +117,18 @@ The manufacturer's service tool ([zhuaibai/TQF-AllInOne](https://github.com/zhua
 
 **Never send** (present in the tool as service functions): `PF` (labelled "system reset"; factory reset in PI30), `^S???CLE` (clears the PV energy counters), `BTA+1` / `BTA-1` and `IVA+01` / `IVA-01` (shift the battery / inverter voltage calibration), `F…` (output frequency; the tool's argument mapping is unclear), `HOSTCRCEN` (makes the unit add a CRC to its H replies; this integration's H parser expects none; `HOSTCRCDN` switches it back), `PSAVE`.
 
+### Owner's first results (2026-11-12, v0.4.17)
+
+| Command | Result on the unit |
+|---|---|
+| `^S???DAT…` (HA button) | **works**: the clock offset went from −3 to −1 min (minute resolution, so the `^S` family is understood) |
+| `PDAULON01` (HA switch) | ACKed; the *Second output* switch is an assumed state and does not follow changes made on the inverter. The tool's read-back `HSTS[2]` char 4 is still unverified here (it read `0` both times it was sampled with the output off); `tools/write_probe.py PDAULON01` diffs the snapshot to find the real read-back |
+| `^S???ACLT11-19`, `^S???ACLT12-18` (HA numbers) | **no answer at all** within 2 s, nothing changed on the LCD. The frame is built like the dongle's verified `^S???DAT` frame (CRC checked) |
+| `write_probe.py --try ACLT 12 18` and `--try ACCT 1 2` (4 variants each, 8 s wait) | **all 8 silent**; `HEEP2` unchanged. The firmware does not know these commands in any form tried. Details and untried ideas: [research-summary.md](research-summary.md#research-log-2026-11-12-how-the-findings-were-made-results-failures) |
+| `PDAULON01` / `PDAULON00` via `write_probe.py` | `(ACK` in 0.15 s each, **no token changed** in `HSTS HEEP1 HEEP2 HGEN QMOD`, both with the dual output off and, after `PDAULC01` (P60 on), still in mode S: effect and read-back unknown. To test with the main output on |
+| `PDAULON00` via `write_probe.py`, **mode L**, P60 on | `(ACK`; **`HSTS[2]` char 4 `1` → `0`**: `PDAULON00` switches the second output off and `HSTS[2]` char 4 is the read-back. (The second output was already on before `PDAULON01`, so `PDAULON01` showed no change.) HA reads it since 0.4.18 (unreleased), the switch is no longer an assumed state |
+| `PDAULC01` via `write_probe.py` | `(ACK`, `HEEP2[0]` 0 → 1: **works, `PDAULC` = P60** |
+
 ## Writing the schedules (P46–P49): candidate found 2026-11-12
 
 No public Voltronic protocol has a command for P46–P49 (checked: PI30, PI30MAX, MKS, the VMII-based remote panel, the official *Axpert KS&MKS&V RS232 Protocol*, mpp-solar, the solarplug-esphome dongle captures; the Solar of Things app does not show these programs). The vendor service tool does:
@@ -127,7 +143,7 @@ No public Voltronic protocol has a command for P46–P49 (checked: PI30, PI30MAX
 - Expected answer: `(ACK`, or the PI18-style `^1` that the sibling unit gave to `^S???DAT`; `(NAK` / `^0` = refused; no answer = the firmware does not know the command.
 - Example frames (computed, not sent): `^S???ACLT12-20` = `5e 53 3f 3f 3f 41 43 4c 54 31 32 2d 32 30 ce 29 0d`, `^S???ACLT12-19` = `5e 53 3f 3f 3f 41 43 4c 54 31 32 2d 31 39 0b 52 0d`, `^S???ACCT01-02` = `5e 53 3f 3f 3f 41 43 43 54 30 31 2d 30 32 33 6c 0d`.
 
-First test for the owner (one change, read back, restore): either with the new number entities in HA (change one hour, check *AC output off time* / the LCD, restore it), or by hand with the integration disabled: read `HEEP2`; send one `^S???ACLT` frame that moves only the off hour by one (both hours inside 01–23, start < end); read `HEEP2[12]` and check P48/P49 on the LCD; restore the old window the same way. Only after that try: hour `00`, a window across midnight, equal hours, and whether the output reacts at once when the current hour enters or leaves the window. Then the same for `^S???ACCT` and `HEEP2[11]`.
+**Status 2026-11-12: these commands got no answer on the unit (all variants), so the four hour numbers in HA do not work; the plan below is kept for reference.** First test for the owner (one change, read back, restore): either with the new number entities in HA (change one hour, check *AC output off time* / the LCD, restore it), or by hand with the integration disabled: read `HEEP2`; send one `^S???ACLT` frame that moves only the off hour by one (both hours inside 01–23, start < end); read `HEEP2[12]` and check P48/P49 on the LCD; restore the old window the same way. Only after that try: hour `00`, a window across midnight, equal hours, and whether the output reacts at once when the current hour enters or leaves the window. Then the same for `^S???ACCT` and `HEEP2[11]`.
 
 Notes: the schedules run on the inverter clock (`HGEN`, about 10 min slow here; `^S???DAT` could correct it). On Voltronic units the AC-charger timer (P46/P47) is reset to 00:00 when the user enters menu 01 or 16 ([Voltacon knowledge base](https://blog.voltaconsolar.com/knowledge-base/why-does-the-inverter-reset-the-ac-charger-timers-to-0000/)); check whether this unit does the same. Since 2026-11-12 (owner's request) the integration has four experimental number entities that send these commands (*AC output on / off hour*, *AC charger start / stop hour*; see [integration.md](integration.md#control-entities)). Each sends the whole window and accepts answers `(ACK` / `(NAK` as well as `^1` / `^0`. The commands are still unverified on this unit.
 

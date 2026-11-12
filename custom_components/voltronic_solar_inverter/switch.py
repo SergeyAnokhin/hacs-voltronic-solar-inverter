@@ -1,8 +1,8 @@
 """Switches for QFLAG options (PE<x>/PD<x>) and, experimental, the second output.
 
-The second-output switches use the service tool's PDAULC (dual output mode, read from
-HEEP2[0]) and PDAULON (second output on / off now; no query is used, so the switch shows
-the last ACKed state, restored after a restart).
+The second-output switches use the service tool's PDAULC (dual output mode = P60, read from
+HEEP2[0]) and PDAULON (second output on / off now, read back from HSTS[2] char 4, verified
+on 2026-11-12: PDAULON00 changed it 1 -> 0).
 """
 
 from __future__ import annotations
@@ -11,10 +11,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
-from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
 
 from .coordinator import VoltronicConfigEntry
 from .entity import VoltronicControlEntity
@@ -99,24 +98,19 @@ class VoltronicDualOutputModeSwitch(VoltronicControlEntity, SwitchEntity):
         await self.async_send(lambda: commands.set_dual_output_mode(False))
 
 
-class VoltronicSecondOutputSwitch(VoltronicControlEntity, SwitchEntity, RestoreEntity):
-    """PDAULON01 / PDAULON00; shows the last ACKed state (the real state is HSTS[2], char 4)."""
+class VoltronicSecondOutputSwitch(VoltronicControlEntity, SwitchEntity):
+    """PDAULON01 / PDAULON00; the state is HSTS[2] char 4 (read with the settings, ~60 s)."""
 
-    _attr_assumed_state = True
-    _attr_is_on: bool | None = None
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.data.second_output is not None
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_state()
-        if last is not None and last.state in (STATE_ON, STATE_OFF):
-            self._attr_is_on = last.state == STATE_ON
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.second_output
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.async_send(lambda: commands.set_second_output(True))
-        self._attr_is_on = True
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.async_send(lambda: commands.set_second_output(False))
-        self._attr_is_on = False
-        self.async_write_ha_state()

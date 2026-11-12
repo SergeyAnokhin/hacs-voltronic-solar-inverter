@@ -52,6 +52,7 @@ class SlowData:
     heep2: SettingsEeprom2 | None = None
     generation: Generation | None = None
     temperatures: Temperatures | None = None
+    second_output: bool | None = None  # HSTS[2] char 4: True = the second output is on
 
     @property
     def clock_offset(self) -> int | None:
@@ -206,12 +207,13 @@ class VoltronicSlowCoordinator(_VoltronicCoordinator[SlowData]):
         charge_stage = None
         if q1 is not None:
             charge_stage = await self._optional(_parse_charge_stage(q1))
-        heep1 = heep2 = generation = temperatures = None
+        heep1 = heep2 = generation = temperatures = second_output = None
         if self.h_supported:
             heep1 = await self._optional(client.read_settings_1(), "heep1")
             heep2 = await self._optional(client.read_settings_2(), "heep2")
             generation = await self._optional(client.read_generation(), "generation")
             temperatures = await self._optional(client.read_temperatures(), "temperatures")
+            second_output = await self._optional(client.read_second_output(), "second_output")
         return SlowData(
             rated=rated,
             flags=flags,
@@ -224,6 +226,7 @@ class VoltronicSlowCoordinator(_VoltronicCoordinator[SlowData]):
             heep2=heep2,
             generation=generation,
             temperatures=temperatures,
+            second_output=second_output,
         )
 
 

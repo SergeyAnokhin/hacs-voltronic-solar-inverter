@@ -1,0 +1,20 @@
+{
+  "note": "HSTS answers copied from the owner's tools/write_probe.py run on 2026-11-12 (mode L, no load, P60 dual output on): before and after PDAULON00. HSTS[2] char 4 changed 1 -> 0 (second output off).",
+  "taken_at": "2026-11-12 night",
+  "stream": {
+    "HSTS_second_output_on": {
+      "raw_hex": "283030204c3031303030303030303030302031313231313030313030304c3131323030303030300d",
+      "text": "00 L010000000000 11211001000L112000000",
+      "crc_ok": null,
+      "seconds": null,
+      "error": null
+    },
+    "HSTS_second_output_off": {
+      "raw_hex": "283030204c3031303030303030303030302031313231303030313030304c3131323030303030300d",
+      "text": "00 L010000000000 11210001000L112000000",
+      "crc_ok": null,
+      "seconds": null,
+      "error": null
+    }
+  }
+}

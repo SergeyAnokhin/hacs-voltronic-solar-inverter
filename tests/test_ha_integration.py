@@ -41,11 +41,13 @@ Q_EXTRA = {
 }
 H_S = plain_answered("probe_h_commands_S.json")
 H_LBU = plain_answered("snapshot_p46-47_01-02_p43_LBU_h.json")
+H_SECOND = plain_answered("snapshot_L_2026-11-12_second_output.json")
 PLAIN = {
     "QPRTL": "HPVINV02",
     "HIMSG1": H_S["HIMSG1"],
     "HGEN": H_S["HGEN"],
     "HTEMP": H_S["HTEMP"],
+    "HSTS": H_S["HSTS"],  # second output off
     "HGRID": H_S["HGRID"],
     "HEEP1": H_LBU["HEEP1"],  # P43 = LBU
     "HEEP2": H_LBU["HEEP2"],  # P46/P47 01-02, P48/P49 23-00
@@ -326,7 +328,7 @@ async def test_switch_sends_flag_command_and_refreshes(
     assert inverter.writes == ["PDa"]
     after = [frame_name(f) for f in inverter.gateway.sent[sent_before:]]
     assert after == [  # the write, then the whole slow coordinator refresh
-        "PDa", "QPIRI", "QFLAG", "QPIWS", "QBEQI", "Q1", "HEEP1", "HEEP2", "HGEN", "HTEMP",
+        "PDa", "QPIRI", "QFLAG", "QPIWS", "QBEQI", "Q1", "HEEP1", "HEEP2", "HGEN", "HTEMP", "HSTS",
     ]
     assert hass.states.get(entity_id).state == STATE_OFF
 
@@ -461,7 +463,7 @@ async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) ->
     assert state(f"number.{PREFIX}_second_output_restore_delay").state == "5"
     assert state(f"number.{PREFIX}_second_output_discharge_time").state == "0"
     assert state(f"switch.{PREFIX}_second_output_mode").state == "on"
-    assert state(f"switch.{PREFIX}_second_output").state == "unknown"  # not readable
+    assert state(f"switch.{PREFIX}_second_output").state == "off"  # HSTS[2] char 4
     assert state(f"number.{PREFIX}_battery_discharge_current_limit").state == "unknown"
     assert state(f"number.{PREFIX}_bms_lock_soc") is None  # BMS entities are disabled by default
     assert state(f"button.{PREFIX}_set_inverter_clock_to_ha_time") is not None
@@ -480,6 +482,7 @@ async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) ->
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": f"switch.{PREFIX}_second_output_mode"}, blocking=True
     )
+    inverter.plain["HSTS"] = H_SECOND["HSTS_second_output_on"]  # what the unit shows after PDAULON01
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": f"switch.{PREFIX}_second_output"}, blocking=True
     )
