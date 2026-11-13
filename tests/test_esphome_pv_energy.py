@@ -10,6 +10,7 @@ Skipped when PyYAML or a C++ compiler (g++, clang++, or `python -m ziglang c++`)
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -36,10 +37,27 @@ def _compiler() -> list[str] | None:
 
 
 def _lambda(package: str) -> str:
+    """The `interval: 1s` lambda with id() rewritten like esphome/cpp_generator.py does.
+
+    `id(x).` -> `x->`, a bare `id(x)` -> `x` (a POINTER, so `&id(x)` would be a pointer to a
+    pointer), a globals component -> `x->value()`.
+    """
     import yaml
 
     data = yaml.safe_load((PACKAGES / package).read_text(encoding="utf-8"))
-    return next(i for i in data["interval"] if i["interval"] == "1s")["then"][0]["lambda"]
+    code = next(i for i in data["interval"] if i["interval"] == "1s")["then"][0]["lambda"]
+    globals_ids = {g["id"] for g in data.get("globals", [])}
+    if package == "pv-string-energy.yaml":  # the Hall package's globals, used by the energy lambda
+        other = yaml.safe_load((PACKAGES / "pv-string-current.yaml").read_text(encoding="utf-8"))
+        globals_ids |= {g["id"] for g in other.get("globals", [])}
+
+    def rewrite(m):
+        name, dot = m.group(1), m.group(2)
+        if name in globals_ids:
+            return f"{name}->value(){dot}"
+        return f"{name}->" if dot else name
+
+    return re.sub(r"id\(\s*([a-zA-Z0-9_]+)\s*\)(\.?)", rewrite, code)
 
 
 def test_pv_energy_lambdas(tmp_path):
