@@ -13,7 +13,7 @@ Living documentation for the Voltronic/Vevor solar inverter Home Assistant integ
 | [settings-map.md](settings-map.md) | You need, per LCD program P01–P64, where to read it and which (owner-tested) command writes it |
 | [local-data.md](local-data.md) | You analyse the owner's real HA history: what to copy into `local_data/`, how to export entities with `tools/ha_history.py` |
 | [esphome-hardware.md](esphome-hardware.md) | You build or debug the ESP32 + MAX3232 hardware: parts, wiring diagrams, RJ45 pin finding, troubleshooting |
-| [hall-current-sensors.md](hall-current-sensors.md) | You build or change the PV string current measurement: two Hall sensors + ADS1115 on the ESP32, wiring diagram, ESPHome package, calibration |
+| [hall-current-sensors.md](hall-current-sensors.md) | You build or change the PV string current measurement: two Hall sensors + ADS1115 on the ESP32, wiring diagram, ESPHome package, calibration; PV power and energy (total / day / month) computed on the ESP32 |
 | [esphome.md](esphome.md) | You touch the ESPHome configs in `esphome/` (ESP32 + MAX3232 instead of the Elfin gateway): wiring, native vs bridge, controls |
 | [esphome-voltronic-component.md](esphome-voltronic-component.md) | You use or change the `voltronic` ESPHome component (read-only, both dialects): YAML to add, behaviour, entity tables, tests, status |
 | [esphome-full-control.md](esphome-full-control.md) | You plan or build the full port of the integration to the ESP32 (both dialects, all sensors, derived values, controls): gap analysis, architecture, polling plan, entity and command tables, steps |

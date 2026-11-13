@@ -159,7 +159,7 @@ Other tools: [`python_scripts/get_inverter_info.py`](python_scripts/get_inverter
 | [docs/esphome.md](docs/esphome.md) | ESP32 + MAX3232 with ESPHome: wiring, native firmware, TCP bridge |
 | [docs/esphome-voltronic-component.md](docs/esphome-voltronic-component.md) | ESPHome component `voltronic` (read-only): all inverter sensors on the ESP32 in both protocol dialects, YAML to add |
 | [docs/esphome-hardware.md](docs/esphome-hardware.md) | Step-by-step build guide: parts, wiring diagrams, finding the RJ45 pins, first test |
-| [docs/hall-current-sensors.md](docs/hall-current-sensors.md) | Optional: current of each PV string with two Hall sensors + ADS1115 on the ESP32 (wiring diagram, ESPHome package) |
+| [docs/hall-current-sensors.md](docs/hall-current-sensors.md) | Optional: current of each PV string with two Hall sensors + ADS1115 on the ESP32 (wiring diagram, ESPHome package), plus real PV power and energy (total / day / month) computed on the ESP32 |
 | [docs/inverter-vevor-gd5548jmh.md](docs/inverter-vevor-gd5548jmh.md) | Device reference (specs, settings, fault codes) |
 
 

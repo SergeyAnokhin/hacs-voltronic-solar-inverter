@@ -28,7 +28,7 @@ Short version: ESP32 `3V3`/`GND`/`GPIO17`/`GPIO16` → MAX3232 `VCC`/`GND`/`TXD`
 
 ## Optional: PV string currents
 
-[`packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml) adds two Hall current sensors (one per PV string) read through an ADS1115 on I²C (GPIO21/22). It works with both configs (commented `packages:` lines are in each) and does not talk to the inverter. Build guide and entities: [hall-current-sensors.md](hall-current-sensors.md).
+[`packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml) adds two Hall current sensors (one per PV string) read through an ADS1115 on I²C (GPIO21/22). It works with both configs (commented `packages:` lines are in each) and does not talk to the inverter. Build guide and entities: [hall-current-sensors.md](hall-current-sensors.md). The optional [`packages/pv-string-energy.yaml`](../esphome/packages/pv-string-energy.yaml) on top of it computes the real PV power and the energy (total, today, this month, last day / month) on the ESP32, with the PV voltage taken from a Home Assistant entity and a *Parallel / Series* select for the string wiring.
 
 ## Setup
 

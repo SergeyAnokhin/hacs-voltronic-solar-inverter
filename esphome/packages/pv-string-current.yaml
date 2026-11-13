@@ -91,6 +91,8 @@ sensor:
             id(avg_n)[0]++;
             id(avg_sum)[2] += a;
             id(avg_n)[2]++;
+            id(avg_sum)[4] += a;
+            id(avg_n)[4]++;
 
   - platform: ads1115
     ads1115_id: ads_hall
@@ -110,6 +112,8 @@ sensor:
             id(avg_n)[1]++;
             id(avg_sum)[3] += a;
             id(avg_n)[3]++;
+            id(avg_sum)[5] += a;
+            id(avg_n)[5]++;
 
   # Owner's naming convention: "<name> raw" = short mean (every "PV raw send
   # interval", for the live view; exclude *_raw from the recorder), plain name =
@@ -357,13 +361,20 @@ globals:
     type: float[2]
   - id: calib_max
     type: float[2]
-  # Accumulators of the send intervals: [0,1] fast (strings 1,2), [2,3] slow.
+  # Accumulators of the send intervals: [0,1] fast (strings 1,2), [2,3] slow,
+  # [4,5] the fixed 1 s means that feed pv-string-energy.yaml (pv_i_now).
   - id: avg_sum
-    type: double[4]
+    type: double[6]
   - id: avg_n
-    type: int[4]
+    type: int[6]
   - id: avg_last   # millis() of the last publish: [0] fast, [1] slow
     type: uint32_t[2]
+  # Latest 1 s mean current of each string WITH the selected zero trim, signed
+  # (read by pv-string-energy.yaml); pv_i_now_ms = millis() of that mean, 0 = none yet.
+  - id: pv_i_now
+    type: float[2]
+  - id: pv_i_now_ms
+    type: uint32_t
 
 interval:
   # Publishes the means every "PV raw send interval" / "PV smoothed send interval".
@@ -387,6 +398,16 @@ interval:
             const float r = roundf(v * k) / k;
             return r == 0.0f ? 0.0f : r;  // no "-0.0"
           };
+          // Fixed 1 s means for the power / energy package (independent of the send intervals).
+          if (id(avg_n)[4] > 0 && id(avg_n)[5] > 0) {
+            id(pv_i_now)[0] = id(avg_sum)[4] / id(avg_n)[4] + trim[0];
+            id(pv_i_now)[1] = id(avg_sum)[5] / id(avg_n)[5] + trim[1];
+            id(pv_i_now_ms) = now;
+          }
+          for (int i = 4; i < 6; i++) {
+            id(avg_sum)[i] = 0.0;
+            id(avg_n)[i] = 0;
+          }
           float raw_s = id(pv_raw_interval).state;
           float avg_s = id(pv_avg_interval).state;
           if (isnan(raw_s) || raw_s < 1.0f) raw_s = 1.0f;

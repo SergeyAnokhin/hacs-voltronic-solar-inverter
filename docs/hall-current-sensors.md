@@ -1,6 +1,6 @@
 # Build guide: PV string current with Hall sensors + ADS1115 on the ESP32
 
-This guide adds two Hall-effect current sensors to the ESP32 from [esphome-hardware.md](esphome-hardware.md), one on each PV string, so Home Assistant shows the current of every string in real time. The PV+ cable of each string passes through the hole of a **QNHCK2-16** sensor (30 A, 3.3 V supply); there is no electrical contact with the PV circuit. The sensors give an analog voltage, which an **ADS1115** 16-bit ADC converts and sends to the ESP32 over I²C. The firmware is the ESPHome package [`esphome/packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml), which can be added to either ESP32 config. It only reads the sensors and never talks to the inverter. The owner has built the hardware; with no cable in the holes the readings sit within about ±0.3 A of zero (normal offset of an open-loop sensor, removed by the zero trim in step 6). Not yet tested with PV current. The package passes `esphome config` (ESPHome 2026.10.2) but has not been compiled by the agent.
+This guide adds two Hall-effect current sensors to the ESP32 from [esphome-hardware.md](esphome-hardware.md), one on each PV string, so Home Assistant shows the current of every string in real time. The PV+ cable of each string passes through the hole of a **QNHCK2-16** sensor (30 A, 3.3 V supply); there is no electrical contact with the PV circuit. The sensors give an analog voltage, which an **ADS1115** 16-bit ADC converts and sends to the ESP32 over I²C. The firmware is the ESPHome package [`esphome/packages/pv-string-current.yaml`](../esphome/packages/pv-string-current.yaml), which can be added to either ESP32 config. It only reads the sensors and never talks to the inverter. A second opt-in package, [`pv-string-energy.yaml`](../esphome/packages/pv-string-energy.yaml), turns the currents plus the PV voltage passed from Home Assistant into PV power and energy (total, today, this month, with the last day / month), see [Power and energy on the ESP32](#power-and-energy-on-the-esp32-pv-string-energyyaml). The owner has built the hardware; with no cable in the holes the readings sit within about ±0.3 A of zero (normal offset of an open-loop sensor, removed by the zero trim in step 6). Not yet tested with PV current. The package passes `esphome config` (ESPHome 2026.10.2) but has not been compiled by the agent.
 
 ![Wiring of two Hall sensors, ADS1115 and ESP32](images/hall-sensors-wiring.svg)
 
@@ -109,28 +109,162 @@ The entities belong to the ESP32's ESPHome device (not to the Voltronic integrat
 
 The smoothed entities are averaged first and clipped at 0 afterwards (clipping single samples would bias the mean upwards around 0 A). The raw entities stay signed on purpose: you need the sign for the zero calibration and to see a reversed sensor (the smoothed entity then just shows 0).
 
+### Power and energy on the ESP32 (`pv-string-energy.yaml`)
+
+The second opt-in package [`esphome/packages/pv-string-energy.yaml`](../esphome/packages/pv-string-energy.yaml) (needs `pv-string-current.yaml` in the same config) makes the ESP32 itself compute the real PV power and energy from the string currents and the PV input voltage, which **Home Assistant passes to the ESP32**. Unlike the inverter's own PV power it does not depend on how the inverter subtracts its consumption. Not yet run on the owner's hardware. It passes `esphome config`, and its lambdas run in a host test ([`tests/test_esphome_pv_energy.py`](../tests/test_esphome_pv_energy.py): parallel / series, integration, no energy without voltage or with stale data, day / month / year change); the firmware has not been compiled by the agent.
+
+```yaml
+packages:
+  pv_current: !include packages/pv-string-current.yaml
+  pv_energy: !include packages/pv-string-energy.yaml
+```
+
+```text
+Hall 1, Hall 2 --(250 ms, zero trim, 1 s mean)--> I1, I2 --Parallel: I1 + I2 / Series: (I1 + I2) / 2, min 0--> I
+HA entity (PV input voltage) --> homeassistant sensor --> U                                                      |
+                                                                              P = I x U  (W) <-----------------+
+                                              1 s: E += P x dt --> total, today, this month (kWh)
+                                              day / month change: finished value --> yesterday / last month
+```
+
+| Setting | Where | Meaning |
+|---|---|---|
+| `pv_voltage_entity` | substitution | HA entity with the PV input voltage in V, default `sensor.vevor_inverter_pv_input_voltage_raw` (the integration's live value). Use the entity ID of your inverter device |
+| *PV strings connection* | select on the ESP32, `Parallel` (default) / `Series`, stored on the ESP, settable from Home Assistant (UI or automation) | **Parallel**: the inverter sees I1 + I2, so the currents are added. **Series**: one current flows through both strings, the two sensors measure the same current, so the **mean** is used (it also halves the noise). The voltage is always the inverter's PV input voltage (the sum of the series strings) |
+
+Entities (device of the ESP32; `…raw` = live view, exclude from the recorder like the other `*_raw`):
+
+| Entity | Unit | Update | Meaning |
+|---|---|---|---|
+| PV strings power raw | W | every *PV raw send interval* | mean of the 1 s powers |
+| PV strings power | W | every *PV smoothed send interval* | mean of the 1 s powers over the smoothed interval; use for history |
+| PV strings energy total | kWh, 3 decimals, `total_increasing` | every smoothed interval | never reset (survives reboot and OTA) |
+| PV strings energy today | kWh, `total_increasing` | every smoothed interval | since local midnight |
+| PV strings energy this month | kWh, `total_increasing` | every smoothed interval | since the 1st of the month, local time |
+| PV strings energy yesterday | kWh, no state class | at the day change | the finished day (the *last value*) |
+| PV strings energy last month | kWh, no state class | at the month change | the finished month |
+| PV strings connection (select, config) | | | see above |
+
+Rules:
+
+- **Power** each second: `P = max(0, I) × max(0, U)` with `I` as above; the signed 1 s mean current already contains the selected zero trim. No power is counted while the voltage entity is `unknown` / `unavailable` in Home Assistant or the Hall readings are older than 3 s (the power sensors then become *unknown*). If Home Assistant itself is unreachable the last received voltage stays in use.
+- **Energy**: `E += P × dt`, `dt` = real time since the previous tick; a gap over 5 s (reboot, stalled loop) adds nothing. The counters are doubles, restored after a reboot; ESPHome writes them to flash at its flash write interval (1 min by default), so a power loss costs at most about a minute.
+- **Day / month change** needs the clock (Home Assistant time, the component `pv_calib_time` of the Hall package, local time). When it changes, the finished *today* / *this month* value is copied into *yesterday* / *last month* and the counter restarts from 0; the keys of the current day and month are stored too, so a reboot over midnight rolls over correctly (after a longer outage *yesterday* holds the last stored day, not necessarily the day before). Until the clock is known (up to 2 min after boot) the energies are not published.
+- **Why separate sensors for the last value**: ESPHome entities cannot carry state attributes, so the Utility Meter style attribute `last_period` (used by the integration's daily energies) is a separate sensor here. Totals, today and this month are `total_increasing`, so Home Assistant's long-term statistics give the energy per day and per month (Energy dashboard and statistics graph).
+- Accuracy: same as the Hall current (about ±0.1–0.2 A after zero calibration) times the voltage; the voltage reaches the ESP32 with the delay of the integration's polling (about its fast interval), which matters little because the MPP voltage changes slowly.
+
+Later, with the inverter wired to the same ESP32 (the `voltronic` component), replace the `homeassistant` sensor `pv_voltage` of the package with the component's `pv_input_voltage` sensor under the id `pv_voltage`: the rest stays unchanged.
+
 ### Combining with the integration's data
 
-Both strings share the inverter's single MPPT input, so they have the same voltage: the integration's *PV voltage* gives the power of each string. Template sensors in Home Assistant (adapt the entity IDs to yours):
+The ESP32 can now do the following itself (see above); the Home Assistant templates below remain an alternative that needs no second package. Both strings are in parallel on the inverter's single MPPT input, so they have the same voltage and **P = U × (I1 + I2)**, with U = the integration's *PV input voltage* (`QPIGS[13]`, sensor key `pv_input_voltage`; `pv_input_voltage_raw` for the live view). Template sensors in Home Assistant (adapt the entity IDs to yours: the ESPHome ones start with the name of your ESP32 device, the integration's with its device name):
 
 ```yaml
 template:
   - sensor:
-      - name: PV string 1 power
-        unit_of_measurement: W
-        device_class: power
-        state_class: measurement
-        state: >
-          {{ (states('sensor.pv_string_1_current') | float(0)
-              * states('sensor.vevor_inverter_pv_voltage') | float(0)) | round(0) }}
       - name: PV strings total current
+        unique_id: pv_strings_total_current
         unit_of_measurement: A
         device_class: current
         state_class: measurement
+        availability: >
+          {{ is_number(states('sensor.pvcontroller_pv_string_1_current'))
+             and is_number(states('sensor.pvcontroller_pv_string_2_current')) }}
         state: >
-          {{ (states('sensor.pv_string_1_current') | float(0)
-              + states('sensor.pv_string_2_current') | float(0)) | round(1) }}
+          {{ (states('sensor.pvcontroller_pv_string_1_current') | float
+              + states('sensor.pvcontroller_pv_string_2_current') | float) | round(1) }}
+      - name: PV strings power (measured)
+        unique_id: pv_strings_power_measured
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        availability: >
+          {{ is_number(states('sensor.pvcontroller_pv_string_1_current'))
+             and is_number(states('sensor.pvcontroller_pv_string_2_current'))
+             and is_number(states('sensor.vevor_inverter_pv_input_voltage')) }}
+        state: >
+          {{ ((states('sensor.pvcontroller_pv_string_1_current') | float
+               + states('sensor.pvcontroller_pv_string_2_current') | float)
+              * states('sensor.vevor_inverter_pv_input_voltage') | float) | round(0) }}
 ```
+
+The power of a single string is the same formula with one current. For a live view use the `… raw` currents and `pv_input_voltage_raw`; the smoothed ones above suit history. Accuracy: the current error (about ±0.1–0.2 A after zero calibration) is multiplied by the voltage, so at 150–300 V it is roughly ±15–60 W; the relative error is small at full sun. Both values are read at slightly different moments, so brief spikes in the product are expected.
+
+### Live PV power with an explanation in the attributes
+
+A sensor for the live view only (its name ends with `raw`, so it is kept out of the database): the measured power, with the formula, the inputs and the accuracy note in its attributes. Put it in `configuration.yaml` (merge it into your existing `template:` / `recorder:` blocks if you have them) and adapt the three entity IDs.
+
+```yaml
+# PV strings power raw: the real DC power of the solar panels, measured at the
+# inverter input:   P [W] = (I1 + I2) [A] * U_pv [V]
+#   I1, I2 = currents of the two PV strings from the Hall sensors (ESPHome,
+#            "... current raw", every send interval, signed)
+#   U_pv   = PV input voltage of the inverter (integration, "pv_input_voltage_raw")
+# The two strings are in parallel on one MPPT input, so they share the voltage.
+# Unlike the inverter's own PV power it does not depend on how the inverter
+# subtracts its own consumption.
+#
+# The name ends with "raw" = live view only. Keep it out of the database (see
+# the recorder block at the end), the attributes are for looking at it live.
+#
+# Adapt the three entity IDs below (they are the same in every template here).
+#   I1: sensor.pvcontroller_pv_string_1_current_raw
+#   I2: sensor.pvcontroller_pv_string_2_current_raw
+#   U : sensor.vevor_inverter_pv_input_voltage_raw
+
+template:
+  - sensor:
+      - name: PV strings power raw
+        unique_id: pv_strings_power_raw
+        icon: mdi:solar-power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        # No value while any input is unknown/unavailable (no fake 0 W).
+        availability: >
+          {{ is_number(states('sensor.pvcontroller_pv_string_1_current_raw'))
+             and is_number(states('sensor.pvcontroller_pv_string_2_current_raw'))
+             and is_number(states('sensor.vevor_inverter_pv_input_voltage_raw')) }}
+        # A negative sum (noise around 0 A at night) is shown as 0 W.
+        state: >
+          {% set i = states('sensor.pvcontroller_pv_string_1_current_raw') | float
+                     + states('sensor.pvcontroller_pv_string_2_current_raw') | float %}
+          {% set u = states('sensor.vevor_inverter_pv_input_voltage_raw') | float %}
+          {{ (([i, 0] | max) * u) | round(0) | int }}
+        attributes:
+          description: >-
+            Measured PV power at the inverter input: sum of the two string
+            currents (Hall sensors) times the inverter's PV input voltage.
+            Live view only, not stored in the database.
+          formula: "P [W] = max(0, I1 + I2) [A] x U_pv [V]"
+          string_1_current: >
+            {{ states('sensor.pvcontroller_pv_string_1_current_raw') }} A
+          string_2_current: >
+            {{ states('sensor.pvcontroller_pv_string_2_current_raw') }} A
+          total_current: >
+            {% set i = states('sensor.pvcontroller_pv_string_1_current_raw') | float(0)
+                       + states('sensor.pvcontroller_pv_string_2_current_raw') | float(0) %}
+            {{ i | round(1) }} A
+          pv_voltage: >
+            {{ states('sensor.vevor_inverter_pv_input_voltage_raw') }} V
+          sources: >-
+            sensor.pvcontroller_pv_string_1_current_raw,
+            sensor.pvcontroller_pv_string_2_current_raw,
+            sensor.vevor_inverter_pv_input_voltage_raw
+          accuracy_note: >-
+            Current error about +-0.1..0.2 A after zero calibration, multiplied
+            by the voltage (e.g. +-15..60 W at 150..300 V). The currents and the
+            voltage are read at slightly different moments.
+
+# Keep the live values out of the database (add to your existing recorder: block
+# if you have one, do not create a second one).
+recorder:
+  exclude:
+    entity_globs:
+      - sensor.*_raw
+```
+
+The `recorder` exclusion matches every `sensor.*_raw`, including the integration's own raw sensors, which are meant to stay out of the database anyway.
 
 The total can be compared with the integration's *PV current* (`QPIGS[12]`) and *PV power full*: a real measurement on the PV cables answers the open question of how much PV power the inverter does not report (see [project-overview.md](project-overview.md), roadmap item 8/11).
 
