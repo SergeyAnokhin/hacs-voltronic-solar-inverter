@@ -120,17 +120,17 @@ packages:
 ```
 
 ```text
-Hall 1, Hall 2 --(250 ms, zero trim, 1 s mean)--> I1, I2 --Parallel: I1 + I2 / Series: (I1 + I2) / 2, min 0--> I
-HA entity (PV input voltage) --> homeassistant sensor --> U                                                      |
-                                                                              P = I x U  (W) <-----------------+
-                                              1 s: E += P x dt --> total, today, this month (kWh)
-                                              day / month change: finished value --> yesterday / last month
+Hall 1, Hall 2 --(250 ms, zero trim, 1 s mean)--> I1, I2
+HA input_select (parallel / series) ------------> mode: parallel I = I1 + I2, series I = (I1 + I2) / 2, never below 0
+HA sensor (PV input voltage) ------------------> U
+P = I x U (W)  -->  1 s: E += P x dt  -->  total, today, this month (kWh)
+day / month change: the finished value goes to yesterday / last month
 ```
 
 | Setting | Where | Meaning |
 |---|---|---|
 | `pv_voltage_entity` | substitution | HA entity with the PV input voltage in V, default `sensor.vevor_inverter_pv_input_voltage_raw` (the integration's live value). Use the entity ID of your inverter device |
-| *PV strings connection* | select on the ESP32, `Parallel` (default) / `Series`, stored on the ESP, settable from Home Assistant (UI or automation) | **Parallel**: the inverter sees I1 + I2, so the currents are added. **Series**: one current flows through both strings, the two sensors measure the same current, so the **mean** is used (it also halves the noise). The voltage is always the inverter's PV input voltage (the sum of the series strings) |
+| `pv_strings_entity` | substitution, default `input_select.vevor_solar_panels_strings` | The Home Assistant input_select that tells how the strings are wired. Its state is matched by text with `pv_series_text` (default `series`) and `pv_parallel_text` (default `parallel`); ASCII letters are compared case-insensitively (write the two substitutions in lower case), other letters, e.g. Cyrillic, must match exactly. **Parallel**: the inverter sees I1 + I2, so the currents are added. **Series**: one current flows through both strings, the two sensors measure the same current, so the **mean** is used (it also halves the noise). `unknown` / `unavailable` or any unrecognised text keeps the last known mode; the mode is stored on the ESP, and while none has ever been received no power / energy is counted. The voltage is always the inverter's PV input voltage (the sum of the series strings) |
 
 Entities (device of the ESP32; `…raw` = live view, exclude from the recorder like the other `*_raw`):
 
@@ -144,7 +144,6 @@ Entities (device of the ESP32; `…raw` = live view, exclude from the recorder l
 | PV strings energy yesterday | kWh, no state class | at the day change | the finished day (the *last value*) |
 | PV strings energy last month | kWh, no state class | at the month change | the finished month |
 | PV energy send interval (number, config) | s, 10–3600, default 300 | editable, stored on the ESP | how often the three energy counters are sent. The counting runs every second regardless, so a longer interval only makes the displayed value change less often, not less accurate; day / month changes are sent at once |
-| PV strings connection (select, config) | | | see above |
 
 Rules:
 

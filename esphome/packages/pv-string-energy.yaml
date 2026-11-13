@@ -9,7 +9,8 @@
 #     pv_energy: !include packages/pv-string-energy.yaml
 #
 # What it does (details: docs/hall-current-sensors.md, "Power and energy on the ESP32"):
-#   current  = sum of the two strings (Parallel) or their mean (Series); never below 0
+#   current  = sum of the two strings (parallel) or their mean (series); never below 0
+#              (the wiring comes from the Home Assistant input_select `pv_strings_entity`)
 #   power    = current x PV voltage                       -> W
 #   energy   = power integrated every second               -> kWh: total, today,
 #              this month; at midnight / at the new month the finished value goes
@@ -26,6 +27,14 @@ substitutions:
   # Home Assistant entity with the PV input voltage in V. The live value
   # (`..._raw`) of the integration is the best one.
   pv_voltage_entity: sensor.vevor_inverter_pv_input_voltage_raw
+  # Home Assistant input_select that tells how the two strings are wired. Its state is
+  # matched by text: an option that contains `pv_series_text` means series, one that
+  # contains `pv_parallel_text` means parallel (ASCII letters compared case-insensitively,
+  # so write these two in lower case; other letters, e.g. Cyrillic, must match exactly).
+  # Any other state ("unknown", "unavailable", ...) keeps the last known mode.
+  pv_strings_entity: input_select.vevor_solar_panels_strings
+  pv_series_text: "series"
+  pv_parallel_text: "parallel"
 
 sensor:
   # PV voltage from Home Assistant (internal: not shown again in Home Assistant).
@@ -129,21 +138,35 @@ number:
     restore_value: true
     initial_value: 300
 
-# How the two strings are wired. Settable from Home Assistant (UI or automation),
-# kept over reboots.
-select:
-  - platform: template
-    id: pv_strings_connection
-    name: PV strings connection
-    entity_category: config
-    options:
-      - "Parallel"   # the inverter sees I1 + I2: currents are added
-      - "Series"     # one current flows through both: the mean of the two sensors
-    initial_option: "Parallel"
-    optimistic: true
-    restore_value: true
+# How the two strings are wired, from Home Assistant (input_select). The mode is kept
+# over reboots, so a reboot while Home Assistant is down does not lose it. While no mode
+# has ever been received (-1) no power / energy is counted.
+text_sensor:
+  - platform: homeassistant
+    id: pv_strings_mode_ha
+    name: PV strings connection from Home Assistant
+    entity_id: ${pv_strings_entity}
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            std::string v = x;
+            for (auto &c : v)
+              if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+            if (v.find("${pv_series_text}") != std::string::npos) {
+              id(pe_mode) = 1;
+            } else if (v.find("${pv_parallel_text}") != std::string::npos) {
+              id(pe_mode) = 0;
+            } else if (v != "unknown" && v != "unavailable") {
+              ESP_LOGW("pv_energy", "Unrecognised state '%s' of ${pv_strings_entity}, keeping the last mode", x.c_str());
+            }
 
 globals:
+  # 0 = parallel (currents are added), 1 = series (mean), -1 = not known yet.
+  - id: pe_mode
+    type: int
+    restore_value: true
+    initial_value: "-1"
   # Counters, restored after a reboot. Doubles: a float would lose Wh resolution.
   - id: pe_total
     type: double
@@ -208,11 +231,12 @@ interval:
           // 1. Power of this second: effective current x PV voltage.
           float p = NAN;
           const float u = id(pv_voltage).state;
-          if (id(pv_i_now_ms) != 0 && now - id(pv_i_now_ms) <= 3000 && !isnan(u)) {
+          const int mode = id(pe_mode);
+          if (id(pv_i_now_ms) != 0 && now - id(pv_i_now_ms) <= 3000 && !isnan(u) && mode >= 0) {
             const float i1 = id(pv_i_now)[0];
             const float i2 = id(pv_i_now)[1];
-            // select index: 0 = Parallel (add), 1 = Series (mean)
-            float i = (id(pv_strings_connection).active_index().value_or(0) == 1) ? (i1 + i2) / 2.0f : i1 + i2;
+            // 0 = parallel (add), 1 = series (mean)
+            float i = (mode == 1) ? (i1 + i2) / 2.0f : i1 + i2;
             p = (i > 0.0f ? i : 0.0f) * (u > 0.0f ? u : 0.0f);
           }
 

@@ -8,7 +8,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstddef>
+#include <string>
 #define id(x) x
+#define ESP_LOGW(tag, ...) (printf("[W][%s] ", tag), printf(__VA_ARGS__), printf("\n"))
 static uint32_t g_now = 0;
 static uint32_t millis() { return g_now; }
 namespace sensor { struct Sensor { float state = NAN; int pubs = 0; void publish_state(float v) { state = v; pubs++; } }; }
@@ -27,7 +29,7 @@ GLOBAL(float[2], pv_i_now); GLOBAL(uint32_t, pv_i_now_ms);
 GLOBAL(double, pe_total); GLOBAL(double, pe_day); GLOBAL(double, pe_month);
 GLOBAL(double, pe_last_day); GLOBAL(double, pe_last_month);
 GLOBAL(int, pe_day_key); GLOBAL(int, pe_month_key); GLOBAL(uint32_t, pe_ms); GLOBAL(uint32_t, pe_pub_ms);
-GLOBAL(bool, pe_force);
+GLOBAL(bool, pe_force); GLOBAL(int, pe_mode);
 GLOBAL(double[2], pw_sum); GLOBAL(int[2], pw_n); GLOBAL(uint32_t[2], pw_last);
 OBJ(sensor::Sensor, pv_voltage);
 OBJ(sensor::Sensor, pv_power_raw);
@@ -50,10 +52,13 @@ OBJ(sensor::Sensor, pv_string1_current_raw);
 OBJ(sensor::Sensor, pv_string2_current_raw);
 OBJ(sensor::Sensor, pv_string1_current);
 OBJ(sensor::Sensor, pv_string2_current);
-OBJ(Select, pv_strings_connection); OBJ(Select, pv_zero_source); OBJ(Clock, pv_calib_time);
+OBJ(Select, pv_zero_source); OBJ(Clock, pv_calib_time);
 
 static void energy_tick() {
 #include "energy_lambda.inc"
+}
+static void mode_from_ha(const std::string &x) {
+#include "mode_lambda.inc"
 }
 static void hall_tick() {
 #include "hall_lambda.inc"
@@ -69,9 +74,16 @@ static void second(float i1, float i2, float u) {
 static void set_date(int y, int m, int d) { pv_calib_time->t.valid = true; pv_calib_time->t.year = y; pv_calib_time->t.month = m; pv_calib_time->t.day_of_month = d; }
 
 int main() {
-  pe_last_day->value() = -1; pe_last_month->value() = -1; pe_force->value() = true;
+  pe_last_day->value() = -1; pe_last_month->value() = -1; pe_force->value() = true; pe_mode->value() = -1;
   pv_raw_interval->state = 1; pv_avg_interval->state = 60; pv_energy_interval->state = 300;
   g_now = 1000;
+  // mode from the Home Assistant input_select
+  mode_from_ha("unknown"); CHECK(pe_mode->value() == -1);
+  mode_from_ha("Parallel"); CHECK(pe_mode->value() == 0);
+  mode_from_ha("SERIES"); CHECK(pe_mode->value() == 1);
+  mode_from_ha("unavailable"); CHECK(pe_mode->value() == 1);
+  mode_from_ha("something else"); CHECK(pe_mode->value() == 1);
+  mode_from_ha("Parallel (2 strings)"); CHECK(pe_mode->value() == 0);
   // boot without a clock: nothing published for 2 min, counters run
   for (int s = 0; s < 100; s++) second(5, 3, 200);
   CHECK(isnan(pv_energy_total->state));
@@ -92,11 +104,16 @@ int main() {
     CHECK(pv_energy_total->pubs - p0 <= 1); }
   NEAR(pv_power->state, 1600, 0.5);
   // series: mean (5+3)/2 = 4 A x 200 V = 800 W
-  pv_strings_connection->idx = 1;
+  pe_mode->value() = 1;
   t0 = pe_total->value();
   for (int s = 0; s < 3600; s++) second(5, 3, 200);
   NEAR(pe_total->value() - t0, 0.8, 1e-6);
-  pv_strings_connection->idx = 0;
+  pe_mode->value() = 0;
+  // mode never received: nothing is counted
+  t0 = pe_total->value(); pe_mode->value() = -1;
+  for (int s = 0; s < 10; s++) second(5, 3, 200);
+  NEAR(pe_total->value() - t0, 0, 1e-12);
+  pe_mode->value() = 0;
   // negative sum -> 0 W, NaN voltage -> nothing counted, power unknown
   t0 = pe_total->value();
   for (int s = 0; s < 120; s++) second(-0.3f, 0.1f, 250);

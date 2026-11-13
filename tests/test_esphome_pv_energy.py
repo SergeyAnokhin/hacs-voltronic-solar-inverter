@@ -60,12 +60,24 @@ def _lambda(package: str) -> str:
     return re.sub(r"id\(\s*([a-zA-Z0-9_]+)\s*\)(\.?)", rewrite, code)
 
 
+def _mode_lambda() -> str:
+    """The on_value lambda of the Home Assistant input_select text sensor, substitutions filled in."""
+    import yaml
+
+    data = yaml.safe_load((PACKAGES / "pv-string-energy.yaml").read_text(encoding="utf-8"))
+    code = data["text_sensor"][0]["on_value"]["then"][0]["lambda"]
+    for key, value in data["substitutions"].items():
+        code = code.replace("${" + key + "}", str(value))
+    return re.sub(r"id\(\s*([a-zA-Z0-9_]+)\s*\)", r"\1->value()", code)
+
+
 def test_pv_energy_lambdas(tmp_path):
     pytest.importorskip("yaml")
     compiler = _compiler()
     if compiler is None:
         pytest.skip("no C++ compiler (g++, clang++ or ziglang) available")
     (tmp_path / "energy_lambda.inc").write_text(_lambda("pv-string-energy.yaml"), encoding="utf-8")
+    (tmp_path / "mode_lambda.inc").write_text(_mode_lambda(), encoding="utf-8")
     (tmp_path / "hall_lambda.inc").write_text(_lambda("pv-string-current.yaml"), encoding="utf-8")
     exe = tmp_path / "pv_energy_test.exe"
     cmd = compiler + ["-std=c++17", "-O1", "-Wall", "-Wno-unused-function", "-I", str(tmp_path), str(SOURCE), "-o", str(exe)]
