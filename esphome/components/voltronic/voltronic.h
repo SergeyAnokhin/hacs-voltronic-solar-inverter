@@ -108,6 +108,8 @@ class Voltronic : public Component, public uart::UARTDevice {
   uint32_t fast_interval_{10000};
   uint32_t slow_interval_{60000};
   std::string rx_;
+  uint16_t stray_{0};      // bytes ignored before an answer's '(' during the current exchange
+  uint8_t stray_first_{0};
   bool warned_mode_{false};
 };
 

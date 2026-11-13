@@ -173,6 +173,7 @@ void Voltronic::send_(uint32_t now) {
   this->flush();
   ESP_LOGV(TAG, "TX %s%s", c.name, this->attempt_ ? " (retry)" : "");
   this->rx_.clear();
+  this->stray_ = 0;
   this->sent_at_ = now;
   this->state_ = State::WAIT;
 }
@@ -188,8 +189,14 @@ void Voltronic::read_(uint32_t now) {
       this->on_frame_(now);
       return;
     }
-    if (this->rx_.empty() && ch != '(')
-      continue;  // wait for the start of an answer
+    if (this->rx_.empty() && ch != '(') {
+      // wait for the start of an answer; remember that something arrived (wiring diagnosis)
+      if (this->stray_ == 0)
+        this->stray_first_ = b;
+      if (this->stray_ < 65535)
+        this->stray_++;
+      continue;
+    }
     this->rx_ += ch;
     if (this->rx_.size() > MAX_FRAME) {
       ESP_LOGW(TAG, "Frame too long, dropped");
@@ -236,6 +243,14 @@ void Voltronic::on_frame_(uint32_t now) {
 
 void Voltronic::on_failure_(uint32_t now, const char *reason) {
   CommandState &c = this->cmds_[this->cur_];
+  if (this->stray_ > 0)
+    ESP_LOGW(TAG, "%s: %u byte(s) arrived but none started an answer with '(' (first 0x%02X): wrong baud rate, "
+                  "noise or a different protocol on the line",
+             c.name, (unsigned) this->stray_, (unsigned) this->stray_first_);
+  else if (!this->rx_.empty())
+    ESP_LOGW(TAG, "%s: partial answer, %u byte(s), no end of line", c.name, (unsigned) this->rx_.size());
+  else if (reason[0] == 't')  // "timeout"
+    ESP_LOGD(TAG, "%s: no bytes at all received (check TX/RX wiring, power and the inverter port)", c.name);
   if (this->attempt_ == 0) {
     // One immediate retry: the first command after an idle period is sometimes lost.
     ESP_LOGD(TAG, "%s: %s, retrying once", c.name, reason);
