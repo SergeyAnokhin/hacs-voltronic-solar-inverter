@@ -9,7 +9,8 @@
 #     pv_energy: !include packages/pv-string-energy.yaml
 #
 # What it does (details: docs/hall-current-sensors.md, "Power and energy on the ESP32"):
-#   current  = sum of the two strings (parallel) or their mean (series); never below 0
+#   current  = sum of the two strings (parallel), their mean (sequential) or one string
+#              only (SW only / SE only); never below 0
 #              (the wiring comes from the Home Assistant input_select `pv_strings_entity`)
 #   power    = current x PV voltage                       -> W
 #   energy   = power integrated every second               -> kWh: total, today,
@@ -27,14 +28,19 @@ substitutions:
   # Home Assistant entity with the PV input voltage in V. The live value
   # (`..._raw`) of the integration is the best one.
   pv_voltage_entity: sensor.vevor_inverter_pv_input_voltage_raw
-  # Home Assistant input_select that tells how the two strings are wired. Its state is
-  # matched by text: an option that contains `pv_series_text` means series, one that
-  # contains `pv_parallel_text` means parallel (ASCII letters compared case-insensitively,
-  # so write these two in lower case; other letters, e.g. Cyrillic, must match exactly).
+  # Home Assistant input_select that tells how the strings are wired. Its state is matched
+  # by text, one text per option (ASCII letters compared case-insensitively, so write them
+  # in lower case; other letters, e.g. Cyrillic, must match exactly). Options of the owner:
+  # "SW only", "SE only", "SW & SE parallel", "SW & SE sequential".
   # Any other state ("unknown", "unavailable", ...) keeps the last known mode.
   pv_strings_entity: input_select.vevor_solar_panels_strings
-  pv_series_text: "series"
+  pv_sw_only_text: "sw only"
+  pv_se_only_text: "se only"
   pv_parallel_text: "parallel"
+  pv_series_text: "sequential"
+  # Which Hall sensor is on the SW strings: 1 = "PV string 1" (ADS1115 A0), 2 = "PV string 2" (A1).
+  # The other sensor is on the SE strings. Owner: string 2 = SW, string 1 = SE.
+  pv_sw_string: "2"
 
 sensor:
   # PV voltage from Home Assistant (internal: not shown again in Home Assistant).
@@ -138,7 +144,7 @@ number:
     restore_value: true
     initial_value: 300
 
-# How the two strings are wired, from Home Assistant (input_select). The mode is kept
+# How the strings are wired / which ones are connected, from Home Assistant (input_select). The mode is kept
 # over reboots, so a reboot while Home Assistant is down does not lose it. While no mode
 # has ever been received (-1) no power / energy is counted.
 text_sensor:
@@ -153,7 +159,11 @@ text_sensor:
             std::string v = x;
             for (auto &c : v)
               if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-            if (v.find("${pv_series_text}") != std::string::npos) {
+            if (v.find("${pv_sw_only_text}") != std::string::npos) {
+              id(pe_mode) = 2;
+            } else if (v.find("${pv_se_only_text}") != std::string::npos) {
+              id(pe_mode) = 3;
+            } else if (v.find("${pv_series_text}") != std::string::npos) {
               id(pe_mode) = 1;
             } else if (v.find("${pv_parallel_text}") != std::string::npos) {
               id(pe_mode) = 0;
@@ -162,7 +172,8 @@ text_sensor:
             }
 
 globals:
-  # 0 = parallel (currents are added), 1 = series (mean), -1 = not known yet.
+  # 0 = parallel (currents are added), 1 = sequential (mean), 2 = SW only, 3 = SE only,
+  # -1 = not known yet.
   - id: pe_mode
     type: int
     restore_value: true
@@ -235,8 +246,11 @@ interval:
           if (id(pv_i_now_ms) != 0 && now - id(pv_i_now_ms) <= 3000 && !isnan(u) && mode >= 0) {
             const float i1 = id(pv_i_now)[0];
             const float i2 = id(pv_i_now)[1];
-            // 0 = parallel (add), 1 = series (mean)
-            float i = (mode == 1) ? (i1 + i2) / 2.0f : i1 + i2;
+            // the two sensors by position: i_sw / i_se
+            const float i_sw = (${pv_sw_string} == 1) ? i1 : i2;
+            const float i_se = (${pv_sw_string} == 1) ? i2 : i1;
+            // 0 = parallel (add), 1 = sequential (mean), 2 = SW only, 3 = SE only
+            float i = (mode == 3) ? i_se : (mode == 2) ? i_sw : (mode == 1) ? (i1 + i2) / 2.0f : i1 + i2;
             p = (i > 0.0f ? i : 0.0f) * (u > 0.0f ? u : 0.0f);
           }
 

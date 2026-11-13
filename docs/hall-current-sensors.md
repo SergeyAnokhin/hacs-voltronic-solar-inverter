@@ -121,7 +121,7 @@ packages:
 
 ```text
 Hall 1, Hall 2 --(250 ms, zero trim, 1 s mean)--> I1, I2
-HA input_select (parallel / series) ------------> mode: parallel I = I1 + I2, series I = (I1 + I2) / 2, never below 0
+HA input_select (SW only / SE only / parallel / sequential) --> mode: I = one string, I1 + I2 or (I1 + I2) / 2, never below 0
 HA sensor (PV input voltage) ------------------> U
 P = I x U (W)  -->  1 s: E += P x dt  -->  total, today, this month (kWh)
 day / month change: the finished value goes to yesterday / last month
@@ -130,7 +130,8 @@ day / month change: the finished value goes to yesterday / last month
 | Setting | Where | Meaning |
 |---|---|---|
 | `pv_voltage_entity` | substitution | HA entity with the PV input voltage in V, default `sensor.vevor_inverter_pv_input_voltage_raw` (the integration's live value). Use the entity ID of your inverter device |
-| `pv_strings_entity` | substitution, default `input_select.vevor_solar_panels_strings` | The Home Assistant input_select that tells how the strings are wired. Its state is matched by text with `pv_series_text` (default `series`) and `pv_parallel_text` (default `parallel`); ASCII letters are compared case-insensitively (write the two substitutions in lower case), other letters, e.g. Cyrillic, must match exactly. **Parallel**: the inverter sees I1 + I2, so the currents are added. **Series**: one current flows through both strings, the two sensors measure the same current, so the **mean** is used (it also halves the noise). `unknown` / `unavailable` or any unrecognised text keeps the last known mode; the mode is stored on the ESP, and while none has ever been received no power / energy is counted. The voltage is always the inverter's PV input voltage (the sum of the series strings) |
+| `pv_strings_entity` | substitution, default `input_select.vevor_solar_panels_strings` | The Home Assistant input_select with the string configuration. The owner's options: **SW only**, **SE only**, **SW & SE parallel**, **SW & SE sequential**. Each is matched by text with a substitution: `pv_sw_only_text` (`sw only`), `pv_se_only_text` (`se only`), `pv_parallel_text` (`parallel`), `pv_series_text` (`sequential`); ASCII letters are compared case-insensitively (write the substitutions in lower case), other letters, e.g. Cyrillic, must match exactly. **Parallel**: the inverter sees I1 + I2, so the currents are added. **Sequential**: one current flows through both strings, the two sensors measure the same current, so the **mean** is used (it also halves the noise). **SW only** / **SE only**: only the sensor of that string is used. `unknown` / `unavailable` or any unrecognised text keeps the last known mode; the mode is stored on the ESP, and while none has ever been received no power / energy is counted. The voltage is always the inverter's PV input voltage |
+| `pv_sw_string` | substitution, default `2` (the owner's wiring) | Which Hall sensor is on the SW strings: `1` = *PV string 1* (ADS1115 A0), `2` = *PV string 2* (A1); the other one is the SE strings. Owner: *PV string 2* = SW, *PV string 1* = SE. Needed only for the *SW only* / *SE only* options |
 
 Entities (device of the ESP32; `…raw` = live view, exclude from the recorder like the other `*_raw`):
 

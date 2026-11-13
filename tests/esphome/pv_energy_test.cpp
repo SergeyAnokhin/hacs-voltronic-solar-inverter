@@ -80,10 +80,15 @@ int main() {
   // mode from the Home Assistant input_select
   mode_from_ha("unknown"); CHECK(pe_mode->value() == -1);
   mode_from_ha("Parallel"); CHECK(pe_mode->value() == 0);
-  mode_from_ha("SERIES"); CHECK(pe_mode->value() == 1);
+  mode_from_ha("SW & SE SEQUENTIAL"); CHECK(pe_mode->value() == 1);
   mode_from_ha("unavailable"); CHECK(pe_mode->value() == 1);
   mode_from_ha("something else"); CHECK(pe_mode->value() == 1);
   mode_from_ha("Parallel (2 strings)"); CHECK(pe_mode->value() == 0);
+  mode_from_ha("SW only"); CHECK(pe_mode->value() == 2);
+  mode_from_ha("SE only"); CHECK(pe_mode->value() == 3);
+  mode_from_ha("SW & SE parallel"); CHECK(pe_mode->value() == 0);
+  mode_from_ha("SW & SE sequential"); CHECK(pe_mode->value() == 1);
+  mode_from_ha("SW & SE parallel"); CHECK(pe_mode->value() == 0);
   // boot without a clock: nothing published for 2 min, counters run
   for (int s = 0; s < 100; s++) second(5, 3, 200);
   CHECK(isnan(pv_energy_total->state));
@@ -108,6 +113,13 @@ int main() {
   t0 = pe_total->value();
   for (int s = 0; s < 3600; s++) second(5, 3, 200);
   NEAR(pe_total->value() - t0, 0.8, 1e-6);
+  // one string only: the sensor of that string (string 2 = SW, string 1 = SE by default), the other one is ignored
+  t0 = pe_total->value(); pe_mode->value() = 2;   // SW only = string 2 = 3 A
+  for (int s = 0; s < 3600; s++) second(5, 3, 200);
+  NEAR(pe_total->value() - t0, 0.6, 1e-6);   // 3 A x 200 V = 0.6 kW for 1 h
+  t0 = pe_total->value(); pe_mode->value() = 3;   // SE only = string 1 = 5 A
+  for (int s = 0; s < 3600; s++) second(5, 3, 200);
+  NEAR(pe_total->value() - t0, 1.0, 1e-6);   // 5 A x 200 V
   pe_mode->value() = 0;
   // mode never received: nothing is counted
   t0 = pe_total->value(); pe_mode->value() = -1;

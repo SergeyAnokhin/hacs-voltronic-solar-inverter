@@ -46,6 +46,8 @@ def _lambda(package: str) -> str:
 
     data = yaml.safe_load((PACKAGES / package).read_text(encoding="utf-8"))
     code = next(i for i in data["interval"] if i["interval"] == "1s")["then"][0]["lambda"]
+    for key, value in data.get("substitutions", {}).items():
+        code = code.replace("${" + key + "}", str(value))
     globals_ids = {g["id"] for g in data.get("globals", [])}
     if package == "pv-string-energy.yaml":  # the Hall package's globals, used by the energy lambda
         other = yaml.safe_load((PACKAGES / "pv-string-current.yaml").read_text(encoding="utf-8"))
