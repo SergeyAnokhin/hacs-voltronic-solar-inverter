@@ -60,7 +60,7 @@ sensor:
     accuracy_decimals: 0
     icon: mdi:solar-power
 
-  # Energies are sent every "PV smoothed send interval" (and at once at a day /
+  # Energies are sent every "PV energy send interval" (and at once at a day /
   # month change). Total, today and this month are total_increasing: Home Assistant
   # sees the drop to 0 as a new period and keeps the long-term statistics per day / month.
   - platform: template
@@ -111,6 +111,23 @@ sensor:
     device_class: energy
     accuracy_decimals: 2
     icon: mdi:solar-power
+
+# How often the energies are sent to Home Assistant. The counting itself runs every
+# second whatever this is, so a longer interval only makes the displayed value
+# change less often, the accuracy does not change. Day / month changes are sent at once.
+number:
+  - platform: template
+    id: pv_energy_interval
+    name: PV energy send interval
+    entity_category: config
+    unit_of_measurement: s
+    min_value: 10
+    max_value: 3600
+    step: 10
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 300
 
 # How the two strings are wired. Settable from Home Assistant (UI or automation),
 # kept over reboots.
@@ -244,6 +261,8 @@ interval:
           float avg_s = id(pv_avg_interval).state;
           if (isnan(raw_s) || raw_s < 1.0f) raw_s = 1.0f;
           if (isnan(avg_s) || avg_s < 1.0f) avg_s = 1.0f;
+          float e_s = id(pv_energy_interval).state;
+          if (isnan(e_s) || e_s < 10.0f) e_s = 10.0f;
           if (now - id(pw_last)[0] >= (uint32_t) (raw_s * 1000.0f)) {
             id(pw_last)[0] = now;
             pub(&id(pv_power_raw), id(pw_n)[0] > 0 ? (float) (id(pw_sum)[0] / id(pw_n)[0]) : NAN, 1.0f);
@@ -257,11 +276,11 @@ interval:
             id(pw_n)[1] = 0;
           }
 
-          // 5. Energies: every smoothed interval, and everything at boot / a day or
+          // 5. Energies: every "PV energy send interval" (default 5 min), and everything at boot / a day or
           //    month change. After a boot wait for the clock (at most 2 min) so that
           //    a stale "today" is not shown after midnight.
           const bool ready = t.is_valid() || now > 120000;
-          if (id(pe_force) ? ready : (now - id(pe_pub_ms) >= (uint32_t) (avg_s * 1000.0f))) {
+          if (id(pe_force) ? ready : (now - id(pe_pub_ms) >= (uint32_t) (e_s * 1000.0f))) {
             id(pe_pub_ms) = now;
             pub(&id(pv_energy_total), (float) id(pe_total), 1000.0f);
             pub(&id(pv_energy_today), (float) id(pe_day), 100.0f);

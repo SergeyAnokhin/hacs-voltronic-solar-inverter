@@ -24,7 +24,7 @@ static double pe_total, pe_day, pe_month, pe_last_day = -1, pe_last_month = -1;
 static int pe_day_key, pe_month_key; static uint32_t pe_ms, pe_pub_ms; static bool pe_force = true;
 static double pw_sum[2]; static int pw_n[2]; static uint32_t pw_last[2];
 static sensor::Sensor pv_voltage, pv_power_raw, pv_power, pv_energy_total, pv_energy_today, pv_energy_month,
-    pv_energy_yesterday, pv_energy_last_month, pv_raw_interval, pv_avg_interval;
+    pv_energy_yesterday, pv_energy_last_month, pv_raw_interval, pv_avg_interval, pv_energy_interval;
 static sensor::Sensor pv_string1_zero_trim, pv_string2_zero_trim, pv_string1_night_trim, pv_string2_night_trim;
 static sensor::Sensor pv_string1_current_calibration_raw, pv_string2_current_calibration_raw, pv_string1_current_raw,
     pv_string2_current_raw, pv_string1_current, pv_string2_current;
@@ -48,7 +48,7 @@ static void second(float i1, float i2, float u) {
 static void set_date(int y, int m, int d) { pv_calib_time.t.valid = true; pv_calib_time.t.year = y; pv_calib_time.t.month = m; pv_calib_time.t.day_of_month = d; }
 
 int main() {
-  pv_raw_interval.state = 1; pv_avg_interval.state = 60;
+  pv_raw_interval.state = 1; pv_avg_interval.state = 60; pv_energy_interval.state = 300;
   g_now = 1000;
   // boot without a clock: nothing published for 2 min, counters run
   for (int s = 0; s < 100; s++) second(5, 3, 200);
@@ -64,7 +64,10 @@ int main() {
   for (int s = 0; s < 3600; s++) second(5, 3, 200);
   NEAR(pe_total - t0, 1.6, 1e-6);
   NEAR(pe_day, pe_total, 1e-9);
-  NEAR(pv_energy_today.state, pe_day, 0.011);
+  // sent every 300 s: lags by at most 5 min of 1.6 kW, the counters themselves are exact
+  NEAR(pv_energy_today.state, pe_day, 1600.0 * 300 / 3.6e6 + 0.011);
+  { int p0 = pv_energy_total.pubs; for (int s = 0; s < 299; s++) second(5, 3, 200);
+    CHECK(pv_energy_total.pubs - p0 <= 1); }
   NEAR(pv_power.state, 1600, 0.5);
   // series: mean (5+3)/2 = 4 A x 200 V = 800 W
   pv_strings_connection.idx = 1;

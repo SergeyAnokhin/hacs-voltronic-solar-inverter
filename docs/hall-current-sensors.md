@@ -138,11 +138,12 @@ Entities (device of the ESP32; `…raw` = live view, exclude from the recorder l
 |---|---|---|---|
 | PV strings power raw | W | every *PV raw send interval* | mean of the 1 s powers |
 | PV strings power | W | every *PV smoothed send interval* | mean of the 1 s powers over the smoothed interval; use for history |
-| PV strings energy total | kWh, 3 decimals, `total_increasing` | every smoothed interval | never reset (survives reboot and OTA) |
-| PV strings energy today | kWh, `total_increasing` | every smoothed interval | since local midnight |
-| PV strings energy this month | kWh, `total_increasing` | every smoothed interval | since the 1st of the month, local time |
+| PV strings energy total | kWh, 3 decimals, `total_increasing` | every *PV energy send interval* (default 300 s) | never reset (survives reboot and OTA) |
+| PV strings energy today | kWh, `total_increasing` | every *PV energy send interval* | since local midnight |
+| PV strings energy this month | kWh, `total_increasing` | every *PV energy send interval* | since the 1st of the month, local time |
 | PV strings energy yesterday | kWh, no state class | at the day change | the finished day (the *last value*) |
 | PV strings energy last month | kWh, no state class | at the month change | the finished month |
+| PV energy send interval (number, config) | s, 10–3600, default 300 | editable, stored on the ESP | how often the three energy counters are sent. The counting runs every second regardless, so a longer interval only makes the displayed value change less often, not less accurate; day / month changes are sent at once |
 | PV strings connection (select, config) | | | see above |
 
 Rules:
