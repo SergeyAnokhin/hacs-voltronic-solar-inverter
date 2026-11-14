@@ -144,6 +144,8 @@ Entities (device of the ESP32; `…raw` = live view, exclude from the recorder l
 | PV strings energy this month | kWh, `total_increasing` | every *PV energy send interval* | since the 1st of the month, local time |
 | PV strings energy yesterday | kWh, no state class | at the day change | the finished day (the *last value*) |
 | PV strings energy last month | kWh, no state class | at the month change | the finished month |
+| PV voltage from Home Assistant, PV strings connection from Home Assistant (diagnostic) | V / text | when Home Assistant sends a new state | the two values the ESP received from HA. `unknown` = the entity id is wrong or the entity is unavailable |
+| PV power status (diagnostic) | text | on change | `ok`, or the first missing input: `no PV voltage from Home Assistant (check pv_voltage_entity …)`, `no string configuration from Home Assistant (check pv_strings_entity …)`, `no fresh Hall current data` |
 | PV energy send interval (number, config) | s, 10–3600, default 300 | editable, stored on the ESP | how often the three energy counters are sent. The counting runs every second regardless, so a longer interval only makes the displayed value change less often, not less accurate; day / month changes are sent at once |
 
 Rules:
@@ -305,6 +307,7 @@ The night trim is **not** stored (and the status says why) when: fewer than 10 v
 | Constant ~0 A with PV producing | PV+ and PV− both through the sensor, or the wrong cable | Only PV+ of one string per sensor |
 | Negative current | Sensor reversed | Turn it over, or change the sign of the formula |
 | Zero drifts during the day | Temperature drift of an open-loop Hall sensor | Calibrate at the usual operating temperature; keep the sensors out of the sun and away from the inverter's heat sink |
+| *PV strings power* stays `unknown` | An input is missing (power is not guessed: a voltage of 0 V gives 0 W, no voltage gives `unknown`) | Read *PV power status*: it names the missing input. Wrong or non-existing HA entity id in `pv_voltage_entity` / `pv_strings_entity` (copy the exact id from Developer tools → States), or the entity is `unavailable` |
 | Noisy reading | Long sensor cable next to AC wires | Shorter or twisted/shielded cable; the 60 s smoothed entity is meant for history |
 
 ## 8. Safety notes

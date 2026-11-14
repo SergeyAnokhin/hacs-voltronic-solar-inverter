@@ -43,14 +43,18 @@ substitutions:
   pv_sw_string: "2"
 
 sensor:
-  # PV voltage from Home Assistant (internal: not shown again in Home Assistant).
+  # PV voltage from Home Assistant, shown as a diagnostic entity so that you can see
+  # whether it arrived ("unknown" here = the entity id is wrong or the entity is unavailable).
   # "unknown" / "unavailable" there gives NaN here, and no power / energy is counted
   # meanwhile. If Home Assistant itself is unreachable the last voltage stays in use.
   - platform: homeassistant
     id: pv_voltage
     name: PV voltage from Home Assistant
     entity_id: ${pv_voltage_entity}
-    internal: true
+    entity_category: diagnostic
+    unit_of_measurement: V
+    device_class: voltage
+    accuracy_decimals: 1
 
   # Owner's naming convention: "... raw" = mean over "PV raw send interval" (live
   # view, exclude *_raw from the recorder), plain name = mean over "PV smoothed
@@ -152,7 +156,7 @@ text_sensor:
     id: pv_strings_mode_ha
     name: PV strings connection from Home Assistant
     entity_id: ${pv_strings_entity}
-    internal: true
+    entity_category: diagnostic
     on_value:
       then:
         - lambda: |-
@@ -170,6 +174,12 @@ text_sensor:
             } else if (v != "unknown" && v != "unavailable") {
               ESP_LOGW("pv_energy", "Unrecognised state '%s' of ${pv_strings_entity}, keeping the last mode", x.c_str());
             }
+
+  # Why the power is (not) available: the first missing input, or "ok".
+  - platform: template
+    id: pv_power_status
+    name: PV power status
+    entity_category: diagnostic
 
 globals:
   # 0 = parallel (currents are added), 1 = sequential (mean), 2 = SW only, 3 = SE only,
@@ -243,7 +253,15 @@ interval:
           float p = NAN;
           const float u = id(pv_voltage).state;
           const int mode = id(pe_mode);
-          if (id(pv_i_now_ms) != 0 && now - id(pv_i_now_ms) <= 3000 && !isnan(u) && mode >= 0) {
+          const char *status = "ok";
+          if (isnan(u))
+            status = "no PV voltage from Home Assistant (check pv_voltage_entity ${pv_voltage_entity})";
+          else if (mode < 0)
+            status = "no string configuration from Home Assistant (check pv_strings_entity ${pv_strings_entity})";
+          else if (id(pv_i_now_ms) == 0 || now - id(pv_i_now_ms) > 3000)
+            status = "no fresh Hall current data";
+          if (id(pv_power_status).state != status) id(pv_power_status).publish_state(status);
+          if (status[0] == 'o') {
             const float i1 = id(pv_i_now)[0];
             const float i2 = id(pv_i_now)[1];
             // the two sensors by position: i_sw / i_se

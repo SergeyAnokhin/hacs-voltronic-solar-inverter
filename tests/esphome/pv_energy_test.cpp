@@ -14,6 +14,7 @@
 static uint32_t g_now = 0;
 static uint32_t millis() { return g_now; }
 namespace sensor { struct Sensor { float state = NAN; int pubs = 0; void publish_state(float v) { state = v; pubs++; } }; }
+struct TextSensor { std::string state; void publish_state(const std::string &s) { state = s; } };
 struct Select { size_t idx = 0; struct O { bool ok; size_t v; size_t value_or(size_t d) const { return ok ? v : d; } };
   O active_index() const { return {true, idx}; } };
 struct ESPTime { bool valid = false; int year = 0, month = 0, day_of_month = 0; bool is_valid() const { return valid; } };
@@ -52,7 +53,7 @@ OBJ(sensor::Sensor, pv_string1_current_raw);
 OBJ(sensor::Sensor, pv_string2_current_raw);
 OBJ(sensor::Sensor, pv_string1_current);
 OBJ(sensor::Sensor, pv_string2_current);
-OBJ(Select, pv_zero_source); OBJ(Clock, pv_calib_time);
+OBJ(TextSensor, pv_power_status); OBJ(Select, pv_zero_source); OBJ(Clock, pv_calib_time);
 
 static void energy_tick() {
 #include "energy_lambda.inc"
@@ -89,6 +90,13 @@ int main() {
   mode_from_ha("SW & SE parallel"); CHECK(pe_mode->value() == 0);
   mode_from_ha("SW & SE sequential"); CHECK(pe_mode->value() == 1);
   mode_from_ha("SW & SE parallel"); CHECK(pe_mode->value() == 0);
+  // status text: why there is no power
+  second(5, 3, NAN); CHECK(pv_power_status->state.find("no PV voltage") == 0);
+  pe_mode->value() = -1; second(5, 3, 200); CHECK(pv_power_status->state.find("no string configuration") == 0);
+  pe_mode->value() = 0; g_now += 4000; energy_tick(); CHECK(pv_power_status->state == "no fresh Hall current data");
+  second(5, 3, 200); CHECK(pv_power_status->state == "ok");
+  g_now = 1000; pe_ms->value() = 0; pe_total->value() = 0; pe_day->value() = 0; pe_month->value() = 0;
+  pw_sum->value()[0] = pw_sum->value()[1] = 0; pw_n->value()[0] = pw_n->value()[1] = 0;
   // boot without a clock: nothing published for 2 min, counters run
   for (int s = 0; s < 100; s++) second(5, 3, 200);
   CHECK(isnan(pv_energy_total->state));
