@@ -139,6 +139,8 @@ Indices are the 0-based tokens of the reply ([inverter-protocol.md](inverter-pro
 
 ## 6. Control entities: command → ESPHome platform
 
+**Status (2026-11-18): implemented** in the `voltronic` component with every row of this table plus the service-tool setters of the integration (schedules P46–P49, P24, second output, BMS SOC, DISCC, set clock); see [esphome-voltronic-component.md](esphome-voltronic-component.md#controls-changing-settings). The two charging currents are selects with the lists this unit reports instead of lists read from `QMCHGCR` / `QMUCHGCR`. Still unverified on the real unit.
+
 Every write is **unverified** on the real unit unless the table says otherwise; **only the owner tests writes** ([AGENTS.md](../AGENTS.md) section 0, [settings-map.md](settings-map.md)). The component validates in C++ exactly like [`commands.py`](../custom_components/voltronic_solar_inverter/protocol/commands.py) does in Python (allow-list of command prefixes, argument ranges, nothing else can be sent) and exposes a hub option `enable_writes: false` by default; controls are created only when it is `true`.
 
 | Entity (ESPHome platform) | Frame | Values | Read-back |

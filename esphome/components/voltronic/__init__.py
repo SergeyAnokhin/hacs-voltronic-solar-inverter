@@ -11,12 +11,13 @@ from esphome.const import CONF_ID
 
 CODEOWNERS = ["@SergeyAnokhin"]
 DEPENDENCIES = ["uart"]
-AUTO_LOAD = ["sensor", "binary_sensor", "text_sensor"]
+AUTO_LOAD = ["sensor", "binary_sensor", "text_sensor", "switch", "select", "number", "button", "time"]
 MULTI_CONF = False
 
 CONF_VOLTRONIC_ID = "voltronic_id"
 CONF_FAST_INTERVAL = "fast_interval"
 CONF_SLOW_INTERVAL = "slow_interval"
+CONF_ENABLE_WRITES = "enable_writes"
 
 voltronic_ns = cg.esphome_ns.namespace("voltronic")
 Voltronic = voltronic_ns.class_("Voltronic", cg.Component, uart.UARTDevice)
@@ -33,6 +34,10 @@ CONFIG_SCHEMA = (
                 cv.positive_time_period_milliseconds,
                 cv.Range(min=cv.TimePeriod(milliseconds=5000)),
             ),
+            # The control entities (switch / select / number / button platforms) only send a setting
+            # when this is true; without it they refuse and log a warning. Every write is unverified
+            # on the real unit until the owner has tested it.
+            cv.Optional(CONF_ENABLE_WRITES, default=False): cv.boolean,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -50,3 +55,4 @@ async def to_code(config):
     await uart.register_uart_device(var, config)
     cg.add(var.set_fast_interval(config[CONF_FAST_INTERVAL].total_milliseconds))
     cg.add(var.set_slow_interval(config[CONF_SLOW_INTERVAL].total_milliseconds))
+    cg.add(var.set_enable_writes(config[CONF_ENABLE_WRITES]))

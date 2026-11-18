@@ -27,9 +27,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # commands the component polls (entities.py / voltronic.cpp)
 POLLED = {
     "QPI", "QMN", "QID", "QVFW", "QPIGS", "QMOD", "QPIRI", "QFLAG", "QPIWS", "Q1", "QBEQI",
-    "HGRID", "HGEN", "HTEMP", "HEEP1", "HEEP2", "HIMSG1",
+    "HGRID", "HGEN", "HTEMP", "HEEP1", "HEEP2", "HIMSG1", "HSTS",
 }
-PLAIN = {"HGRID", "HGEN", "HTEMP", "HEEP1", "HEEP2", "HIMSG1", "QPRTL"}
+PLAIN = {"HGRID", "HGEN", "HTEMP", "HEEP1", "HEEP2", "HIMSG1", "HSTS", "QPRTL"}
 
 
 def _compiler() -> list[str] | None:

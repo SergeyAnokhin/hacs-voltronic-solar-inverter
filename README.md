@@ -24,7 +24,7 @@ A custom Home Assistant integration that reads live data, ratings, settings, war
 - An RS232-to-TCP gateway connected to the inverter's RS232 port (2400 baud, 8N1), in transparent TCP server mode (Elfin default port `8899`)
 - The gateway serves **one client at a time**: stop other tools (the prototype script, the vendor app) while the integration runs
 
-No gateway? An ESP32 with a MAX3232 level shifter can replace it: [`esphome/vevor-bridge.yaml`](esphome/vevor-bridge.yaml) makes it a TCP bridge on port 8899 for this integration, and [`esphome/vevor-inverter.yaml`](esphome/vevor-inverter.yaml) is a standalone ESPHome firmware (PI30 only, optional setting controls). Build guide with wiring diagrams: [docs/esphome-hardware.md](docs/esphome-hardware.md); firmware details: [docs/esphome.md](docs/esphome.md). The same ESP32 can also measure the current of each PV string with two Hall sensors and an ADS1115: [docs/hall-current-sensors.md](docs/hall-current-sensors.md).
+No gateway? An ESP32 with a MAX3232 level shifter can replace it: [`esphome/vevor-bridge.yaml`](esphome/vevor-bridge.yaml) makes it a TCP bridge on port 8899 for this integration, and [`esphome/vevor-inverter.yaml`](esphome/vevor-inverter.yaml) is a standalone ESPHome firmware (PI30 only, optional setting controls). Build guide with wiring diagrams: [docs/esphome-hardware.md](docs/esphome-hardware.md); firmware details: [docs/esphome.md](docs/esphome.md). A third option puts the whole integration on the ESP32 itself (no gateway, no Home Assistant integration needed on the data path): the ESPHome component [`esphome/components/voltronic`](esphome/components/voltronic) reads everything over the RS232 port and, once `enable_writes: true` is set, changes the inverter's settings (every write is untested on real hardware: you test them one by one, see [docs/esphome-voltronic-component.md](docs/esphome-voltronic-component.md)). The same ESP32 can also measure the current of each PV string with two Hall sensors and an ADS1115: [docs/hall-current-sensors.md](docs/hall-current-sensors.md).
 
 ## Installation
 
@@ -157,7 +157,7 @@ Other tools: [`python_scripts/get_inverter_info.py`](python_scripts/get_inverter
 | [docs/research-summary.md](docs/research-summary.md) | Protocol research: what was tried, what works, open questions, next tests |
 | [docs/settings-map.md](docs/settings-map.md) | LCD programs P01–P64: read source and write command for each |
 | [docs/esphome.md](docs/esphome.md) | ESP32 + MAX3232 with ESPHome: wiring, native firmware, TCP bridge |
-| [docs/esphome-voltronic-component.md](docs/esphome-voltronic-component.md) | ESPHome component `voltronic` (read-only): all inverter sensors on the ESP32 in both protocol dialects, YAML to add |
+| [docs/esphome-voltronic-component.md](docs/esphome-voltronic-component.md) | ESPHome component `voltronic`: all inverter sensors on the ESP32 in both protocol dialects, plus switch / select / number / button controls (off until `enable_writes: true`), YAML to add |
 | [docs/esphome-hardware.md](docs/esphome-hardware.md) | Step-by-step build guide: parts, wiring diagrams, finding the RJ45 pins, first test |
 | [docs/hall-current-sensors.md](docs/hall-current-sensors.md) | Optional: current of each PV string with two Hall sensors + ADS1115 on the ESP32 (wiring diagram, ESPHome package), plus real PV power and energy (total / day / month) computed on the ESP32 |
 | [docs/inverter-vevor-gd5548jmh.md](docs/inverter-vevor-gd5548jmh.md) | Device reference (specs, settings, fault codes) |

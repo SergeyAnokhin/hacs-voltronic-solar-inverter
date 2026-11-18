@@ -1,0 +1,87 @@
+# Control entities of the `voltronic` component: change the inverter's settings from Home
+# Assistant (opt-in package; needs the hub and packages/voltronic-inverter.yaml).
+#
+#   voltronic:
+#     id: inverter
+#     uart_id: rs232
+#     enable_writes: true      # without this every change is refused and logged
+#
+#   packages:
+#     inverter: ...voltronic-inverter.yaml
+#     controls: ...voltronic-controls.yaml
+#
+# EVERY WRITE IS UNVERIFIED on the owner's unit until he has tested it: change one value, check it
+# on the LCD and in the read-back entity, restore it. Nothing else can ever be sent (the allow-list
+# in protocol.h) and at most one setting goes out every 2 s, never repeated. Programs P46-P49 follow
+# the inverter clock; use the *Set inverter clock* button first if it is off.
+#
+# The numbers show the value the inverter reports (read back after every change) unless noted.
+# Names carry the LCD program number (see docs/settings-map.md). Voltage ranges are for a 24 V
+# battery system (Vevor manual). The two charging currents list the values this unit reports
+# (QMCHGCR 10..80 A, QMUCHGCR 2, 10..60 A).
+
+time:
+  # local time for the *Set inverter clock* button (an extra clock next to any other `time:`)
+  - platform: homeassistant
+    id: voltronic_clock
+
+switch:
+  - platform: voltronic
+    # QFLAG options (PE<x> / PD<x>)
+    buzzer: { name: Buzzer (P18) }
+    overload_bypass: { name: Overload bypass (P23) }
+    power_saving: { name: Power saving (P08) }
+    lcd_return_to_default: { name: LCD returns to default screen (P19) }
+    overload_restart: { name: Restart after overload (P06) }
+    over_temperature_restart: { name: Restart after over temperature (P07) }
+    backlight: { name: LCD backlight (P20) }
+    primary_source_interrupt_alarm: { name: Alarm when the primary source is interrupted (P22) }
+    fault_code_record: { name: Record fault codes (P25) }
+    # second (dual) output, service tool setters
+    second_output_mode: { name: Second output mode (P60) }
+    second_output: { name: Second output }
+
+select:
+  - platform: voltronic
+    output_source_priority: { name: Output source priority (P01) }
+    charger_source_priority: { name: Charger source priority (P16) }
+    solar_supply_priority: { name: Solar supply priority (P43) }
+    max_charging_current: { name: Max charging current (P02) }
+    max_ac_charging_current: { name: Max utility charging current (P11) }
+    # Axpert MAX protocol: cannot be read back, shows the last accepted option
+    battery_control: { name: Battery charge and discharge override }
+
+number:
+  - platform: voltronic
+    battery_recharge_voltage: { name: Back-to-grid voltage setting (P12) }
+    battery_redischarge_voltage: { name: Back-to-battery voltage setting (P13) }
+    battery_under_voltage: { name: Low DC cut-off voltage setting (P29) }
+    battery_bulk_voltage: { name: Bulk voltage setting (P26) }
+    battery_low_alarm_voltage: { name: Low battery alarm voltage setting (P24) }
+    # schedules: a change sends the whole window (the other hour is taken from the last read)
+    ac_output_on_hour: { name: AC output on hour (P48) }
+    ac_output_off_hour: { name: AC output off hour (P49) }
+    ac_charger_start_hour: { name: AC charger start hour (P46) }
+    ac_charger_stop_hour: { name: AC charger stop hour (P47) }
+    # second output thresholds (service tool)
+    second_output_cutoff_voltage: { name: Second output cut-off voltage }
+    second_output_recover_voltage: { name: Second output recover voltage }
+    second_output_cutoff_soc: { name: Second output cut-off SOC }
+    second_output_recover_soc: { name: Second output recover SOC }
+    second_output_recover_delay: { name: Second output recover delay }
+    second_output_discharge_time: { name: Second output discharge time }
+    # not readable on this firmware: show the last accepted value
+    battery_discharge_current_limit: { name: Battery discharge current limit }
+    max_discharging_current: { name: Max discharging current }
+    # BMS settings (P38-P41): this installation has no BMS link, so they are not listed here.
+    # Add them when you have one:
+    #   bms_lock_soc: { name: BMS lock SOC (P38) }
+    #   bms_back_to_ac_soc: { name: BMS back to AC SOC (P39) }
+    #   bms_back_to_battery_soc: { name: BMS back to battery SOC (P40) }
+    #   bms_restart_soc: { name: BMS restart SOC (P41) }
+
+button:
+  - platform: voltronic
+    set_clock:
+      name: Set inverter clock
+      time_id: voltronic_clock

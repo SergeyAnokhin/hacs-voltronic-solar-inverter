@@ -17,6 +17,8 @@ static const uint32_t DRAIN_MS = 200;           // discard late bytes after a fa
 static const uint32_t PROBE_RETRY_MS = 300000;  // QPRTL silent: ask again after 5 min
 static const uint8_t MAX_MISSES = 5;            // then the command's sensors become unavailable
 static const size_t MAX_FRAME = 512;
+static const uint32_t WRITE_MIN_GAP_MS = 2000;  // at most one setting every 2 s, never retried
+static const size_t MAX_QUEUED_WRITES = 8;
 
 // The only commands this component can send. All are read-only queries. The allow-list
 // is the same set the Python integration uses (PI30 'Q...' with CRC; owner-approved 'H...'
@@ -30,6 +32,7 @@ static const CommandState COMMAND_TABLE[] = {
     {"QPIRI", false, 2, 0},            {"QFLAG", false, 2, 0},     {"QPIWS", false, 2, 0},
     {"Q1", false, 2, 0},               {"QBEQI", false, 2, 0},     {"HGEN", true, 2, 0},
     {"HTEMP", true, 2, 0},             {"HEEP1", true, 2, 0},      {"HEEP2", true, 2, 0},
+    {"HSTS", true, 2, 0},  // second output state (read back of the PDAULON switch)
 };
 static const size_t PROBE_INDEX = 0;
 
@@ -85,6 +88,54 @@ void Voltronic::add_binary_sensor(const std::string &cmd, int field, int kind, i
   c->binaries.push_back({{field, pos, 0, -1}, kind, letters, b});
 }
 
+void Voltronic::add_control(const std::string &cmd, Control *c) {
+  CommandState *s = this->find_(cmd);
+  if (s == nullptr)
+    return;
+  s->wanted = true;
+  s->controls.push_back(c);
+}
+
+void Voltronic::mark_due_(const std::string &cmd, uint32_t now) {
+  if (cmd.empty())
+    return;
+  for (auto &c : this->cmds_)
+    if (c.wanted && cmd == c.name)
+      c.next_due = now;
+}
+
+bool Voltronic::last_token(const std::string &cmd, int field, std::string &out) {
+  for (auto &c : this->cmds_) {
+    if (cmd == c.name) {
+      if (field < 0 || (size_t) field >= c.last_tokens.size())
+        return false;
+      out = c.last_tokens[field];
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Voltronic::request_write(const std::string &text, Control *who) {
+  if (!this->writes_enabled_) {
+    ESP_LOGW(TAG, "Setting %s refused: set enable_writes: true on the voltronic hub to allow changes", text.c_str());
+    return false;
+  }
+  if (!proto::is_allowed_write(text)) {
+    ESP_LOGE(TAG, "Setting %s refused: not on the built-in allow-list", text.c_str());
+    return false;
+  }
+  for (const auto &w : this->writes_)
+    if (w.text == text)
+      return true;  // the same setting is already queued
+  if (this->writes_.size() >= MAX_QUEUED_WRITES) {
+    ESP_LOGW(TAG, "Setting %s refused: %u settings are already waiting", text.c_str(), (unsigned) this->writes_.size());
+    return false;
+  }
+  this->writes_.push_back({text, who});
+  return true;
+}
+
 void Voltronic::setup() {
   bool need_h = false;
   for (size_t i = 0; i < this->cmds_.size(); i++)
@@ -119,11 +170,19 @@ void Voltronic::loop() {
   uint32_t now = millis();
   switch (this->state_) {
     case State::IDLE:
-      if ((int32_t) (now - this->gap_until_) >= 0)
-        this->start_next_(now);
+      if ((int32_t) (now - this->gap_until_) >= 0) {
+        // A queued setting goes first (not in the middle of a query retry), at most one per 2 s.
+        if (!this->writes_.empty() && !this->retry_pending_ && (now - this->last_write_ms_ >= WRITE_MIN_GAP_MS))
+          this->start_write_(now);
+        else
+          this->start_next_(now);
+      }
       break;
     case State::WAIT:
       this->read_(now);
+      break;
+    case State::WRITE:
+      this->read_write_(now);
       break;
     case State::DRAIN:
       this->drain_rx_();
@@ -176,6 +235,62 @@ void Voltronic::send_(uint32_t now) {
   this->stray_ = 0;
   this->sent_at_ = now;
   this->state_ = State::WAIT;
+}
+
+void Voltronic::start_write_(uint32_t now) {
+  this->cur_write_ = this->writes_.front();
+  this->writes_.pop_front();
+  const std::string &text = this->cur_write_.text;
+  if (!proto::is_allowed_write(text)) {  // belt and braces: request_write() checked it already
+    this->finish_write_(now, false, "not allowed");
+    return;
+  }
+  this->drain_rx_();
+  std::string frame = proto::encode_pi30(text);  // every setting is a PI30 frame with CRC
+  this->write_array((const uint8_t *) frame.data(), frame.size());
+  this->flush();
+  ESP_LOGI(TAG, "Setting sent: %s", text.c_str());
+  this->rx_.clear();
+  this->sent_at_ = now;
+  this->last_write_ms_ = now;
+  this->state_ = State::WRITE;
+}
+
+void Voltronic::read_write_(uint32_t now) {
+  uint8_t b;
+  while (this->available()) {
+    this->read_byte(&b);
+    char ch = (char) b;
+    if (ch == proto::CR) {
+      if (this->rx_.empty())
+        continue;
+      int r = proto::decode_write_answer(this->rx_);
+      ESP_LOGD(TAG, "Setting answer: %u byte(s) -> %s", (unsigned) this->rx_.size(), r == 1 ? "ACK" : r == 0 ? "NAK" : "bad");
+      this->finish_write_(now, r == 1, r == 0 ? "NAK" : "bad answer");
+      return;
+    }
+    if (this->rx_.empty() && ch != '(' && ch != '^')
+      continue;  // wait for the start of an answer
+    this->rx_ += ch;
+    if (this->rx_.size() > MAX_FRAME)
+      this->rx_.clear();
+  }
+  if ((int32_t) (now - this->sent_at_) > (int32_t) REPLY_TIMEOUT_MS)
+    this->finish_write_(now, false, "timeout");
+}
+
+void Voltronic::finish_write_(uint32_t now, bool ok, const char *why) {
+  if (ok)
+    ESP_LOGI(TAG, "Setting %s accepted (ACK)", this->cur_write_.text.c_str());
+  else
+    ESP_LOGW(TAG, "Setting %s NOT applied: %s", this->cur_write_.text.c_str(), why);
+  if (this->cur_write_.who != nullptr) {
+    this->cur_write_.who->on_write_result(ok, why);
+    if (ok)
+      this->mark_due_(this->cur_write_.who->refresh_command(), now);  // read the new value back soon
+  }
+  this->state_ = State::DRAIN;  // a late byte must not reach the next exchange
+  this->drain_until_ = now + DRAIN_MS;
 }
 
 void Voltronic::read_(uint32_t now) {
@@ -312,6 +427,7 @@ static bool extract_string(const std::vector<std::string> &t, const Extract &ex,
 }
 
 void Voltronic::publish_(CommandState &c, const std::vector<std::string> &t, const std::string &payload) {
+  c.last_tokens = t;
   for (auto &b : c.sensors) {
     if (b.ex.field == -1) {
       // derived: battery power in W, + = charging (QPIGS: V * (charge A - discharge A))
@@ -365,6 +481,8 @@ void Voltronic::publish_(CommandState &c, const std::vector<std::string> &t, con
     if (extract_string(t, b.ex, s) && (size_t) b.ex.pos < s.size())
       b.entity->publish_state(s[b.ex.pos] == '1');
   }
+  for (auto *ctl : c.controls)
+    ctl->on_answer(t, payload);
 }
 
 void Voltronic::publish_unavailable_(CommandState &c) {

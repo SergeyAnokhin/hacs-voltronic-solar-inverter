@@ -227,3 +227,138 @@ QPIWS_BITS = {
 }
 for _bit, _key in QPIWS_BITS.items():
     BINARY_SENSORS[f"alarm_{_key}"] = _b("QPIWS", 0, pos=_bit, dc="problem")
+
+
+# ---------------------------------------------------------------------------------------------
+# Control entities (switch / select / number / button). Every setting text is checked again in
+# C++ (protocol.h is_allowed_write), whose ranges must equal commands.py: tests/test_esphome_controls.py
+# compares them. All writes are UNVERIFIED on the unit until the owner tests them one by one, and
+# nothing is ever sent unless the hub has `enable_writes: true`.
+# ---------------------------------------------------------------------------------------------
+
+
+def _sw(on, off, cmd, field, kind, pos=0, letters="", icon=None):
+    return {"on": on, "off": off, "cmd": cmd, "field": field, "kind": kind, "pos": pos, "letters": letters, "icon": icon}
+
+
+SWITCHES = {
+    # QFLAG options, P-number in docs/settings-map.md: PE<x> enables, PD<x> disables; read back from QFLAG
+    "buzzer": _sw("PEa", "PDa", "QFLAG", 0, KIND_FLAG, letters="a", icon="mdi:volume-high"),  # P18
+    "overload_bypass": _sw("PEb", "PDb", "QFLAG", 0, KIND_FLAG, letters="b"),  # P23
+    "power_saving": _sw("PEj", "PDj", "QFLAG", 0, KIND_FLAG, letters="j"),  # P08
+    "lcd_return_to_default": _sw("PEk", "PDk", "QFLAG", 0, KIND_FLAG, letters="k"),  # P19
+    "overload_restart": _sw("PEu", "PDu", "QFLAG", 0, KIND_FLAG, letters="u"),  # P06
+    "over_temperature_restart": _sw("PEv", "PDv", "QFLAG", 0, KIND_FLAG, letters="v"),  # P07
+    "backlight": _sw("PEx", "PDx", "QFLAG", 0, KIND_FLAG, letters="x", icon="mdi:brightness-6"),  # P20
+    "primary_source_interrupt_alarm": _sw("PEy", "PDy", "QFLAG", 0, KIND_FLAG, letters="y"),  # P22
+    "fault_code_record": _sw("PEz", "PDz", "QFLAG", 0, KIND_FLAG, letters="z"),  # P25
+    # service tool setters (docs/settings-map.md): dual output mode P60 (HEEP2[0]) and the second
+    # output on / off now (HSTS[2] char 4, verified on 2026-11-12)
+    "second_output_mode": _sw("PDAULC01", "PDAULC00", "HEEP2", 0, KIND_BIT, pos=0),
+    "second_output": _sw("PDAULON01", "PDAULON00", "HSTS", 2, KIND_BIT, pos=4, icon="mdi:power-socket-eu"),
+}
+
+
+def _sel(options, cmd=None, field=0, mapping=None, pos=0, length=0, assumed=False, icon=None):
+    return {
+        "options": options,  # option text -> setting text
+        "cmd": cmd,
+        "field": field,
+        "pos": pos,
+        "len": length,
+        "map": "|".join(f"{k}={v}" for k, v in (mapping or {}).items()),
+        "assumed": assumed,
+        "icon": icon,
+    }
+
+
+SELECTS = {
+    # Codes follow the LCD menu position on this firmware (only owner-verified codes are offered)
+    "output_source_priority": _sel(  # P01
+        {"Solar first": "POP00", "SBU": "POP01"},
+        "QPIRI", 16, {"0": "Solar first", "1": "SBU"}, icon="mdi:transmission-tower",
+    ),
+    "charger_source_priority": _sel(  # P16
+        {"Solar first": "PCP00", "Solar and utility": "PCP01", "Only solar": "PCP02"},
+        "QPIRI", 17, {"0": "Solar first", "1": "Solar and utility", "2": "Only solar"}, icon="mdi:battery-charging",
+    ),
+    "solar_supply_priority": _sel(  # P43
+        {"Battery first": "PVENGUSE00", "Load first": "PVENGUSE01"},
+        "HEEP1", 3, {"0": "Battery first", "1": "Load first"}, pos=3, length=1, icon="mdi:solar-power",
+    ),
+    # The lists the owner's unit reports (QMCHGCR 10..80 A, QMUCHGCR 2, 10..60 A); other units differ
+    "max_charging_current": _sel(  # P02
+        {f"{a} A": f"MNCHGC{a:03d}" for a in range(10, 90, 10)},
+        "QPIRI", 14, {str(a): f"{a} A" for a in range(10, 90, 10)}, icon="mdi:current-dc",
+    ),
+    "max_ac_charging_current": _sel(  # P11
+        {f"{a} A": f"MUCHGC{a:03d}" for a in (2, 10, 20, 30, 40, 50, 60)},
+        "QPIRI", 13, {str(a): f"{a} A" for a in (2, 10, 20, 30, 40, 50, 60)}, icon="mdi:current-ac",
+    ),
+    # Axpert MAX protocol, cannot be read back: shows the last ACKed option
+    "battery_control": _sel(
+        {
+            "Auto": "PBATCD000",
+            "No discharge": "PBATCD101",
+            "No charge": "PBATCD110",
+            "No charge, no discharge": "PBATCD100",
+        },
+        assumed=True, icon="mdi:battery-lock",
+    ),
+}
+
+
+def _n(kind, unit, lo, hi, step, cmd=None, field=0, pos=0, length=0, prefix="", dc=None, assumed=False,
+       ac_output=False, is_start=False, icon=None):
+    return {
+        "kind": kind,  # "value" (prefix + value), "max_discharge", "schedule"
+        "prefix": prefix,
+        "unit": unit,
+        "min": lo,
+        "max": hi,
+        "step": step,
+        "cmd": cmd,
+        "field": field,
+        "pos": pos,
+        "len": length,
+        "dc": dc,
+        "assumed": assumed,
+        "ac_output": ac_output,
+        "is_start": is_start,
+        "icon": icon,
+    }
+
+
+NUMBERS = {
+    # battery voltages, 24 V system (ranges: Vevor manual)
+    "battery_recharge_voltage": _n("value", "V", 22.0, 25.5, 0.5, "QPIRI", 8, prefix="PBCV", dc="voltage"),  # P12
+    "battery_redischarge_voltage": _n("value", "V", 24.0, 29.0, 0.5, "QPIRI", 22, prefix="PBDV", dc="voltage"),  # P13
+    "battery_under_voltage": _n("value", "V", 20.0, 26.0, 0.1, "QPIRI", 9, prefix="PSDV", dc="voltage"),  # P29
+    "battery_bulk_voltage": _n("value", "V", 24.0, 30.0, 0.1, "QPIRI", 10, prefix="PCVV", dc="voltage"),  # P26
+    # service tool setters, read back from HEEP1 / HEEP2
+    "battery_low_alarm_voltage": _n("value", "V", 20.0, 27.0, 0.1, "HEEP2", 3, prefix="PSLV", dc="voltage"),  # P24
+    "second_output_cutoff_voltage": _n("value", "V", 20.0, 30.0, 0.1, "HEEP2", 1, prefix="PDSDV", dc="voltage"),
+    "second_output_recover_voltage": _n("value", "V", 20.0, 30.0, 0.1, "HEEP2", 15, prefix="PDSRV", dc="voltage"),
+    "second_output_cutoff_soc": _n("value", "%", 0, 100, 1, "HEEP2", 2, prefix="PDSDS"),
+    "second_output_recover_soc": _n("value", "%", 0, 50, 1, "HEEP2", 16, pos=0, length=2, prefix="PDSRS"),
+    "second_output_recover_delay": _n("value", "min", 0, 60, 5, "HEEP2", 13, prefix="PDDLYT"),
+    "second_output_discharge_time": _n("value", "min", 0, 990, 5, "HEEP2", 16, pos=2, length=3, prefix="PDDCGT"),
+    # BMS settings: this installation has no BMS link, list them only when you have one
+    "bms_lock_soc": _n("value", "%", 0, 100, 1, "HEEP1", 10, prefix="BMSSDC"),  # P38
+    "bms_back_to_ac_soc": _n("value", "%", 0, 100, 1, "HEEP1", 11, prefix="BMSB2UC"),  # P39
+    "bms_back_to_battery_soc": _n("value", "%", 0, 100, 1, "HEEP1", 12, prefix="BMSU2BC"),  # P40
+    "bms_restart_soc": _n("value", "%", 0, 100, 1, "HEEP1", 13, prefix="BMSSRC"),  # P41
+    # not readable on this firmware: show the last ACKed value
+    "battery_discharge_current_limit": _n("value", "A", 0, 250, 1, prefix="DISCC", dc="current", assumed=True),
+    "max_discharging_current": _n("max_discharge", "A", 0, 150, 10, dc="current", assumed=True),
+    # AC output (P48/P49) and AC charger (P46/P47) windows; a change sends the whole window
+    "ac_output_on_hour": _n("schedule", "h", 0, 23, 1, "HEEP2", 12, pos=0, length=2, ac_output=True, is_start=True),
+    "ac_output_off_hour": _n("schedule", "h", 0, 23, 1, "HEEP2", 12, pos=2, length=2, ac_output=True),
+    "ac_charger_start_hour": _n("schedule", "h", 0, 23, 1, "HEEP2", 11, pos=0, length=2, is_start=True),
+    "ac_charger_stop_hour": _n("schedule", "h", 0, 23, 1, "HEEP2", 11, pos=2, length=2),
+}
+
+BUTTONS = {
+    # ^S???DAT: sets the inverter clock to the ESP32's local time (needs a `time:` component)
+    "set_clock": {"icon": "mdi:clock-check-outline"},
+}

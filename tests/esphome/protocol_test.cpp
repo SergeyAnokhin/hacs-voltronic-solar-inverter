@@ -63,6 +63,48 @@ int main() {
       std::string payload, letter;
       in >> payload >> letter;
       std::cout << qflag_state(payload, letter[0]) << "\n";
+    } else if (op == "WVAL") {  // WVAL <prefix> <value> -> the setting text or INVALID
+      std::string prefix, text;
+      double v;
+      in >> prefix >> v;
+      std::cout << (build_value(prefix, v, text) ? text : "INVALID") << "\n";
+    } else if (op == "WCODE") {  // WCODE <prefix> <code>
+      std::string prefix, text;
+      int code;
+      in >> prefix >> code;
+      std::cout << (build_code(prefix, code, text) ? text : "INVALID") << "\n";
+    } else if (op == "WFLAG") {  // WFLAG <letter> <0|1>
+      std::string letter, text;
+      int on;
+      in >> letter >> on;
+      std::cout << (build_flag(letter[0], on != 0, text) ? text : "INVALID") << "\n";
+    } else if (op == "WMAXD") {  // WMAXD <amps>
+      std::string text;
+      int amps;
+      in >> amps;
+      std::cout << (build_max_discharging(amps, text) ? text : "INVALID") << "\n";
+    } else if (op == "WSCHED") {  // WSCHED <1 = AC output, 0 = AC charger> <start> <end>
+      std::string text;
+      int output, start, end;
+      in >> output >> start >> end;
+      std::cout << (build_schedule(output != 0, start, end, text) ? text : "INVALID") << "\n";
+    } else if (op == "WCLOCK") {  // WCLOCK y m d h mi s
+      std::string text;
+      int y, mo, d, h, mi, s;
+      in >> y >> mo >> d >> h >> mi >> s;
+      std::cout << (build_clock(y, mo, d, h, mi, s, text) ? text : "INVALID") << "\n";
+    } else if (op == "ALLOWED") {  // ALLOWED <text> -> 1 / 0
+      std::string text;
+      in >> text;
+      std::cout << (is_allowed_write(text) ? 1 : 0) << "\n";
+    } else if (op == "WANS") {  // WANS <hex of the received bytes incl. CR> -> ACK / NAK / BAD
+      std::string hex;
+      in >> hex;
+      std::string raw = from_hex(hex);
+      if (!raw.empty() && raw.back() == CR)
+        raw.pop_back();
+      int r = decode_write_answer(raw);
+      std::cout << (r == 1 ? "ACK" : r == 0 ? "NAK" : "BAD") << "\n";
     } else if (op == "NUM") {  // NUM <token> -> parsed float or NAN
       std::string tok;
       in >> tok;
