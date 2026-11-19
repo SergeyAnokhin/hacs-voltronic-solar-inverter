@@ -646,9 +646,6 @@
       }
     },
     "number": {
-      "max_discharging_current": {
-        "name": "Max discharging current"
-      },
       "battery_low_alarm_voltage": {
         "name": "Battery low alarm voltage"
       },
@@ -681,9 +678,6 @@
       },
       "bms_restart_soc": {
         "name": "BMS restart SOC"
-      },
-      "battery_discharge_current_limit": {
-        "name": "Battery discharge current limit"
       },
       "ac_output_on_hour": {
         "name": "AC output on hour"

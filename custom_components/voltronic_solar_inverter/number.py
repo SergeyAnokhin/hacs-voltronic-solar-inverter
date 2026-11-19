@@ -1,5 +1,4 @@
-"""Numbers for charge currents, the max discharge current (PBATMAXDISC, not
-readable: shows the last ACKed value) and battery voltage thresholds, plus four
+"""Numbers for charge currents and battery voltage thresholds, plus four
 HA-only settings: the inverter's total own consumption (battery mode / line
 mode / standby / solar charging).
 
@@ -120,18 +119,15 @@ async def async_setup_entry(
     if data.slow.data.rated.battery_rating_voltage == 24.0:
         descriptions += [_voltage_description(key) for key in commands.VOLTAGE_SETTINGS_24V]
     async_add_entities(VoltronicNumber(data.slow, d) for d in descriptions)
-    async_add_entities([VoltronicDischargeCurrentNumber(data.slow, MAX_DISCHARGING_CURRENT)])
     if identity.h_protocol is not None:  # these settings are read through HEEP1 / HEEP2
         async_add_entities(VoltronicScheduleNumber(data.slow, d) for d in SCHEDULE_NUMBERS)
         eeprom = list(EEPROM_INTEGER_NUMBERS)
         if data.slow.data.rated.battery_rating_voltage == 24.0:  # the voltage ranges are 24 V ones
             eeprom += EEPROM_VOLTAGE_NUMBERS
         async_add_entities(VoltronicEepromNumber(data.slow, d) for d in eeprom)
-        async_add_entities(
-            [VoltronicBatteryDischargeLimitNumber(data.slow, BATTERY_DISCHARGE_CURRENT_LIMIT)]
-        )
     # 0.4.5-0.4.8 stored only the part the inverter's sensors miss, under other keys;
-    # drop them so the new settings start from the measured totals.
+    # drop them so the new settings start from the measured totals. The two discharge
+    # current limits were removed: the firmware does not answer PBATMAXDISC / DISCC.
     remove_entities(hass, identity, "number", REMOVED_NUMBER_KEYS)
     async_add_entities(
         VoltronicOwnConsumptionNumber(data.fast, d, setting)
@@ -143,6 +139,8 @@ REMOVED_NUMBER_KEYS = (
     "self_consumption_battery_mode",
     "self_consumption_line_mode",
     "self_consumption_output_off",
+    "number_max_discharging_current",
+    "number_battery_discharge_current_limit",
 )
 
 
@@ -167,20 +165,6 @@ OWN_CONSUMPTION_NUMBERS: tuple[tuple[NumberEntityDescription, str], ...] = (
     (_own_consumption_description("own_consumption_line_mode"), LINE),
     (_own_consumption_description("own_consumption_standby"), STANDBY),
     (_own_consumption_description("own_consumption_solar_charging"), SOLAR_CHARGING),
-)
-
-
-# PBATMAXDISC: 0 = no limit, 30..150 A (values 10 and 20 are rejected by the builder).
-MAX_DISCHARGING_CURRENT = NumberEntityDescription(
-    key="number_max_discharging_current",
-    translation_key="max_discharging_current",
-    entity_category=EntityCategory.CONFIG,
-    device_class=NumberDeviceClass.CURRENT,
-    native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-    native_min_value=0,
-    native_max_value=commands.MAX_DISCHARGING_CURRENT_RANGE[1],
-    native_step=10,
-    mode=NumberMode.BOX,
 )
 
 
@@ -329,42 +313,6 @@ class VoltronicEepromNumber(VoltronicControlEntity, NumberEntity):
         await self.async_send(lambda: self.entity_description.command_fn(value))
 
 
-# DISCC<nnn> (service tool): battery discharge current limit. The tool reads it from
-# HEEP3[6] on another device type; on this unit HEEP3 is not parsed, so like PBATMAXDISC
-# the entity shows the last ACKed value.
-BATTERY_DISCHARGE_CURRENT_LIMIT = NumberEntityDescription(
-    key="number_battery_discharge_current_limit",
-    translation_key="battery_discharge_current_limit",
-    entity_category=EntityCategory.CONFIG,
-    device_class=NumberDeviceClass.CURRENT,
-    native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-    native_min_value=commands.INTEGER_SETTINGS["battery_discharge_current_limit"].minimum,
-    native_max_value=commands.INTEGER_SETTINGS["battery_discharge_current_limit"].maximum,
-    native_step=1,
-    mode=NumberMode.BOX,
-)
-
-
-class VoltronicBatteryDischargeLimitNumber(VoltronicControlEntity, RestoreNumber):
-    """DISCC; the value is the last ACKed one (not read back)."""
-
-    _attr_assumed_state = True
-    _attr_native_value: float | None = None
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_number_data()
-        if last is not None:
-            self._attr_native_value = last.native_value
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self.async_send(
-            lambda: commands.set_integer_setting("battery_discharge_current_limit", _as_int(value))
-        )
-        self._attr_native_value = value
-        self.async_write_ha_state()
-
-
 class VoltronicScheduleNumber(VoltronicControlEntity, NumberEntity):
     """An hour of a schedule read from HEEP2; a change sends the full window."""
 
@@ -405,24 +353,6 @@ class VoltronicNumber(VoltronicControlEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.async_send(lambda: self.entity_description.command_fn(value))
-
-
-class VoltronicDischargeCurrentNumber(VoltronicControlEntity, RestoreNumber):
-    """PBATMAXDISC; the value is the last ACKed one (no query reads it back)."""
-
-    _attr_assumed_state = True
-    _attr_native_value: float | None = None
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_number_data()
-        if last is not None:
-            self._attr_native_value = last.native_value
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self.async_send(lambda: commands.set_max_discharging_current(_as_int(value)))
-        self._attr_native_value = value
-        self.async_write_ha_state()
 
 
 class VoltronicOwnConsumptionNumber(VoltronicEntity[VoltronicFastCoordinator], RestoreNumber):

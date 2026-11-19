@@ -367,27 +367,21 @@ async def test_battery_overrides_show_last_acked_value(
 ) -> None:
     await setup(hass)
     select_id = f"select.{PREFIX}_battery_charge_discharge_override"
-    number_id = f"number.{PREFIX}_max_discharging_current"
     assert hass.states.get(select_id).state == "unknown"
+    # PBATMAXDISC / DISCC get no answer from this firmware: no discharge-limit entities
+    assert hass.states.get(f"number.{PREFIX}_max_discharging_current") is None
+    assert hass.states.get(f"number.{PREFIX}_battery_discharge_current_limit") is None
     await hass.services.async_call(
         "select", "select_option", {"entity_id": select_id, "option": "no_discharge"}, blocking=True
     )
     assert hass.states.get(select_id).state == "no_discharge"
-    await hass.services.async_call(
-        "number", "set_value", {"entity_id": number_id, "value": 60}, blocking=True
-    )
-    assert hass.states.get(number_id).state == "60"
-    with pytest.raises(ServiceValidationError):
-        await hass.services.async_call(
-            "number", "set_value", {"entity_id": number_id, "value": 20}, blocking=True
-        )
     inverter.write_answer = "NAK"
     with pytest.raises(HomeAssistantError, match="rejected"):
         await hass.services.async_call(
             "select", "select_option", {"entity_id": select_id, "option": "auto"}, blocking=True
         )
     assert hass.states.get(select_id).state == "no_discharge"
-    assert inverter.writes == ["PBATCD101", "PBATMAXDISC060", "PBATCD000"]
+    assert inverter.writes == ["PBATCD101", "PBATCD000"]
 
 
 async def test_numbers(hass: HomeAssistant, inverter: Inverter) -> None:
@@ -464,7 +458,6 @@ async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) ->
     assert state(f"number.{PREFIX}_second_output_discharge_time").state == "0"
     assert state(f"switch.{PREFIX}_second_output_mode").state == "on"
     assert state(f"switch.{PREFIX}_second_output").state == "off"  # HSTS[2] char 4
-    assert state(f"number.{PREFIX}_battery_discharge_current_limit").state == "unknown"
     assert state(f"number.{PREFIX}_bms_lock_soc") is None  # BMS entities are disabled by default
     assert state(f"button.{PREFIX}_set_inverter_clock_to_ha_time") is not None
 
@@ -477,8 +470,6 @@ async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) ->
     await set_value("battery_low_alarm_voltage", 23.6)
     await set_value("second_output_restore_delay", 10)
     await set_value("second_output_discharge_time", 30)
-    await set_value("battery_discharge_current_limit", 80)
-    assert float(state(f"number.{PREFIX}_battery_discharge_current_limit").state) == 80
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": f"switch.{PREFIX}_second_output_mode"}, blocking=True
     )
@@ -488,24 +479,23 @@ async def test_service_tool_settings(hass: HomeAssistant, inverter: Inverter) ->
     )
     assert state(f"switch.{PREFIX}_second_output").state == "on"
     assert inverter.writes == [
-        "PSLV23.6", "PDDLYT010", "PDDCGT0030", "DISCC080", "PDAULC00", "PDAULON01",
+        "PSLV23.6", "PDDLYT010", "PDDCGT0030", "PDAULC00", "PDAULON01",
     ]
 
     with pytest.raises(ServiceValidationError):  # 5-minute steps only, nothing is sent
         await set_value("second_output_restore_delay", 4)
-    assert len(inverter.writes) == 6
+    assert len(inverter.writes) == 5
 
     await hass.services.async_call(
         "button", "press",
         {"entity_id": f"button.{PREFIX}_set_inverter_clock_to_ha_time"}, blocking=True,
     )
-    assert len(inverter.writes) == 7
+    assert len(inverter.writes) == 6
     assert inverter.writes[-1].startswith("^S???DAT") and len(inverter.writes[-1]) == len("^S???DAT") + 12
 
     inverter.write_answer = "NAK"
     with pytest.raises(HomeAssistantError, match="rejected"):
         await set_value("second_output_cutoff_soc", 30)
-    assert float(state(f"number.{PREFIX}_battery_discharge_current_limit").state) == 80
 
 
 # --- H dialect and optional queries ----------------------------------------------
